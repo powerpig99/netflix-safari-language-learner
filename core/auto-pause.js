@@ -1,6 +1,8 @@
 (() => {
   const app = globalThis.NetflixLanguageLearner = globalThis.NetflixLanguageLearner || {};
   const core = app.core = app.core || {};
+  const AUTO_PAUSE_LEAD_MS = 180;
+  const MIN_TIMER_MS = 16;
 
   function createAutoPauseController({ adapter, settingsStore, subtitleStore }) {
     let attachedVideo = null;
@@ -36,12 +38,20 @@
         return;
       }
 
+      const playbackRate = Number(video.playbackRate);
+      const safePlaybackRate = Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1;
+      const remainingMs = (remainingSeconds * 1000) / safePlaybackRate;
+      const pauseDelayMs = remainingMs - AUTO_PAUSE_LEAD_MS;
+      if (!Number.isFinite(pauseDelayMs) || pauseDelayMs <= 0) {
+        return;
+      }
+
       pauseTimer = globalThis.setTimeout(() => {
         const currentVideo = adapter.getVideo();
         if (currentVideo === video && !video.paused) {
           video.pause();
         }
-      }, Math.max(0, (remainingSeconds * 1000) - 40));
+      }, Math.max(MIN_TIMER_MS, pauseDelayMs));
     }
 
     function attachVideo(video) {

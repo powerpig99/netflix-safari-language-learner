@@ -132,6 +132,18 @@
       return true;
     }
 
+    function setNativeSubtitleVisibility(visible) {
+      globalThis.postMessage({
+        type: 'nll:player-command',
+        nonce: app.pageScriptNonce || null,
+        command: 'set-native-subtitle-visibility',
+        payload: {
+          visible: Boolean(visible)
+        }
+      }, '*');
+      return true;
+    }
+
     function getTitle() {
       const candidates = [
         document.querySelector('meta[property="og:title"]')?.content,
@@ -416,6 +428,7 @@
       getVideo,
       getCurrentTime,
       seekToTime,
+      setNativeSubtitleVisibility,
       getTitle: () => title || getTitle(),
       getSourceLanguage,
       getMountTarget,

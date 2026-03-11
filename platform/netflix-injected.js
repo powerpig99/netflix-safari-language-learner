@@ -1608,6 +1608,25 @@
         }
         scheduleRefresh('player-seek');
       }
+      return;
+    }
+
+    if (command === 'set-native-subtitle-visibility') {
+      const visible = Boolean(payload?.visible);
+
+      if (typeof context.sessionPlayer?.setTimedTextVisibility === 'function') {
+        safeCall(() => context.sessionPlayer.setTimedTextVisibility(visible));
+      }
+
+      if (typeof context.sessionPlayer?.setTimedTextVisible === 'function') {
+        safeCall(() => context.sessionPlayer.setTimedTextVisible(visible));
+      }
+
+      if (context.activeSessionId && typeof context.videoPlayer?.showTimedTextBySessionId === 'function') {
+        safeCall(() => context.videoPlayer.showTimedTextBySessionId(context.activeSessionId, visible));
+      }
+
+      scheduleRefresh('player-timedtext-visibility');
     }
   }
 

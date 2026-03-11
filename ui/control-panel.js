@@ -76,6 +76,9 @@
 
     return {
       element,
+      setVisible(isVisible) {
+        element.classList.toggle('is-visible', Boolean(isVisible));
+      },
       update
     };
   }

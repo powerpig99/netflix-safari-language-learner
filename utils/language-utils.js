@@ -79,7 +79,9 @@
     { value: 'small', label: 'S', cssValue: '0.95rem' },
     { value: 'medium', label: 'M', cssValue: '1.15rem' },
     { value: 'large', label: 'L', cssValue: '1.35rem' },
-    { value: 'xlarge', label: 'XL', cssValue: '1.6rem' }
+    { value: 'xlarge', label: 'XL', cssValue: '1.6rem' },
+    { value: 'xxlarge', label: 'XXL', cssValue: '1.95rem' },
+    { value: 'cinema', label: '4K', cssValue: '2.3rem' }
   ];
 
   const LANGUAGE_CODE_MAP = {
