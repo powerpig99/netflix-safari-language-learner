@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netflix Language Learner</title>
+  <style>
+    :root {
+      --popup-bg: radial-gradient(circle at top, #203048 0%, #0d121a 58%, #07090d 100%);
+      --popup-surface: rgba(255, 255, 255, 0.08);
+      --popup-border: rgba(255, 255, 255, 0.16);
+      --popup-text: #f6f8fb;
+      --popup-muted: rgba(246, 248, 251, 0.72);
+      --popup-accent: #ffb347;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      width: 320px;
+      min-height: 340px;
+      padding: 16px;
+      background: var(--popup-bg);
+      color: var(--popup-text);
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    .popup {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .hero {
+      padding: 14px 16px;
+      border: 1px solid var(--popup-border);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(16px);
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: 1rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .hero p {
+      margin: 8px 0 0;
+      color: var(--popup-muted);
+      font-size: 0.85rem;
+      line-height: 1.4;
+    }
+
+    .card {
+      border: 1px solid var(--popup-border);
+      border-radius: 18px;
+      background: var(--popup-surface);
+      backdrop-filter: blur(16px);
+      overflow: hidden;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+    }
+
+    .row + .row {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .label {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .label strong {
+      font-size: 0.93rem;
+      font-weight: 600;
+    }
+
+    .label span {
+      color: var(--popup-muted);
+      font-size: 0.78rem;
+    }
+
+    .switch {
+      appearance: none;
+      width: 46px;
+      height: 28px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.18);
+      position: relative;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .switch::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: white;
+      transition: transform 0.2s ease;
+    }
+
+    .switch:checked {
+      background: rgba(255, 179, 71, 0.4);
+    }
+
+    .switch:checked::after {
+      transform: translateX(18px);
+      background: #ffe6b8;
+    }
+
+    .meta {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 14px 16px;
+    }
+
+    .meta-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 0.84rem;
+    }
+
+    .meta-item span:first-child {
+      color: var(--popup-muted);
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid var(--popup-border);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--popup-text);
+      padding: 11px 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: rgba(255, 179, 71, 0.18);
+      border-color: rgba(255, 179, 71, 0.32);
+      color: #ffe6b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="popup">
+    <section class="hero">
+      <h1>Netflix Language Learner</h1>
+      <p>Safari-first scaffold using one normalized Netflix adapter and explicit timing feature gating.</p>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <div class="label">
+          <strong>Extension</strong>
+          <span>Master on/off switch</span>
+        </div>
+        <input id="extension-enabled" class="switch" type="checkbox">
+      </div>
+      <div class="row">
+        <div class="label">
+          <strong>Dual Subtitles</strong>
+          <span>Original plus translation</span>
+        </div>
+        <input id="dual-sub-enabled" class="switch" type="checkbox">
+      </div>
+      <div class="row">
+        <div class="label">
+          <strong>Auto-Pause</strong>
+          <span>Only active with deterministic timing</span>
+        </div>
+        <input id="auto-pause-enabled" class="switch" type="checkbox">
+      </div>
+    </section>
+
+    <section class="card meta">
+      <div class="meta-item">
+        <span>Target language</span>
+        <strong id="target-language">EN-US</strong>
+      </div>
+      <div class="meta-item">
+        <span>Provider</span>
+        <strong id="translation-provider">Google Translate</strong>
+      </div>
+      <div class="meta-item">
+        <span>Playback speed</span>
+        <strong id="playback-speed">1x</strong>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button id="open-options" class="primary" type="button">Open Settings</button>
+      <button id="close-popup" type="button">Close</button>
+    </div>
+  </div>
+
+  <script src="utils/language-utils.js"></script>
+  <script src="utils/extension-api.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,81 @@
+{
+  "manifest_version": 3,
+  "name": "Netflix Safari Language Learner",
+  "version": "0.1.0",
+  "description": "Dual subtitles, word lookup, translation cache, and playback controls for Netflix on Safari.",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.netflix.com/*",
+    "https://netflix.com/*",
+    "https://api-free.deepl.com/*",
+    "https://translate.googleapis.com/*",
+    "https://translation.googleapis.com/*",
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.x.ai/*",
+    "https://api.kimi.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.netflix.com/*",
+        "https://netflix.com/*"
+      ],
+      "run_at": "document_start",
+      "js": [
+        "utils/extension-api.js",
+        "inject.js"
+      ]
+    },
+    {
+      "matches": [
+        "https://www.netflix.com/*",
+        "https://netflix.com/*"
+      ],
+      "run_at": "document_end",
+      "css": [
+        "styles.css"
+      ],
+      "js": [
+        "utils/language-utils.js",
+        "utils/extension-api.js",
+        "utils/dom-utils.js",
+        "database.js",
+        "core/settings.js",
+        "core/subtitle-store.js",
+        "core/translation-api.js",
+        "core/translation-queue.js",
+        "core/word-translation.js",
+        "core/overlay-controller.js",
+        "core/auto-pause.js",
+        "core/control-actions.js",
+        "ui/control-icons.js",
+        "ui/control-panel.js",
+        "ui/control-integration.js",
+        "platform/netflix-adapter.js",
+        "content-script.js"
+      ]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "platform/netflix-injected.js"
+      ],
+      "matches": [
+        "https://www.netflix.com/*",
+        "https://netflix.com/*"
+      ]
+    }
+  ],
+  "action": {
+    "default_title": "Netflix Language Learner",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options/index.html"
+}

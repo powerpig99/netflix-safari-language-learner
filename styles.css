@@ -1,0 +1,234 @@
+:root {
+  --nll-surface: rgba(12, 18, 28, 0.78);
+  --nll-border: rgba(255, 255, 255, 0.18);
+  --nll-text: #f6f8fb;
+  --nll-muted: rgba(255, 255, 255, 0.68);
+  --nll-accent: #ffb347;
+  --nll-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+.nll-overlay {
+  position: absolute;
+  left: 50%;
+  bottom: 12%;
+  transform: translateX(-50%);
+  width: min(90%, 980px);
+  z-index: 2147482500;
+  pointer-events: none;
+}
+
+.nll-overlay__surface {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.nll-overlay__original,
+.nll-overlay__translation,
+.nll-overlay__status {
+  max-width: 100%;
+  padding: 0.5rem 0.9rem;
+  border-radius: 16px;
+  background: var(--nll-surface);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--nll-shadow);
+  text-align: center;
+  color: var(--nll-text);
+}
+
+.nll-overlay__original {
+  pointer-events: auto;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.nll-overlay__translation {
+  line-height: 1.35;
+  color: #ffe7c5;
+}
+
+.nll-overlay__translation[data-state="loading"] {
+  color: var(--nll-muted);
+}
+
+.nll-overlay__translation[data-state="error"],
+.nll-overlay__status {
+  color: #ffd0c2;
+}
+
+.nll-overlay[data-font-size="small"] .nll-overlay__original {
+  font-size: 1rem;
+}
+
+.nll-overlay[data-font-size="small"] .nll-overlay__translation {
+  font-size: 0.92rem;
+}
+
+.nll-overlay[data-font-size="medium"] .nll-overlay__original {
+  font-size: 1.18rem;
+}
+
+.nll-overlay[data-font-size="medium"] .nll-overlay__translation {
+  font-size: 1.02rem;
+}
+
+.nll-overlay[data-font-size="large"] .nll-overlay__original {
+  font-size: 1.34rem;
+}
+
+.nll-overlay[data-font-size="large"] .nll-overlay__translation {
+  font-size: 1.15rem;
+}
+
+.nll-overlay[data-font-size="xlarge"] .nll-overlay__original {
+  font-size: 1.55rem;
+}
+
+.nll-overlay[data-font-size="xlarge"] .nll-overlay__translation {
+  font-size: 1.3rem;
+}
+
+.nll-clickable-text {
+  display: inline;
+}
+
+.nll-word {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.nll-word:hover,
+.nll-word:focus-visible,
+.nll-word--active {
+  color: var(--nll-accent);
+  text-decoration: underline;
+}
+
+.nll-word-tooltip {
+  position: absolute;
+  z-index: 2147482600;
+  min-width: 180px;
+  max-width: min(92vw, 320px);
+  padding: 0.8rem 0.95rem;
+  border: 1px solid var(--nll-border);
+  border-radius: 14px;
+  background: rgba(15, 20, 30, 0.96);
+  color: var(--nll-text);
+  box-shadow: var(--nll-shadow);
+}
+
+.nll-word-tooltip__word {
+  font-weight: 700;
+}
+
+.nll-word-tooltip__translation {
+  margin-top: 0.35rem;
+}
+
+.nll-word-tooltip__translation--loading {
+  color: var(--nll-muted);
+}
+
+.nll-word-tooltip__source {
+  margin-top: 0.4rem;
+  color: var(--nll-muted);
+  font-size: 0.78rem;
+}
+
+.nll-word-tooltip__link {
+  display: inline-block;
+  margin-top: 0.65rem;
+  color: #9cd3ff;
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+.nll-control-panel {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.45rem;
+  border-radius: 999px;
+  background: rgba(9, 14, 23, 0.8);
+  border: 1px solid var(--nll-border);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--nll-shadow);
+  z-index: 2147482550;
+}
+
+.nll-control-btn,
+.nll-control-speed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  min-width: 2.25rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--nll-text);
+}
+
+.nll-control-btn {
+  padding: 0.5rem;
+  cursor: pointer;
+}
+
+.nll-control-btn svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.nll-control-btn.is-active {
+  background: rgba(255, 179, 71, 0.2);
+  color: #ffd8a4;
+}
+
+.nll-control-btn:disabled,
+.nll-control-speed:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.nll-control-speed {
+  padding: 0 0.7rem;
+  appearance: none;
+  cursor: pointer;
+}
+
+.nll-control-status {
+  flex: 1 1 100%;
+  padding: 0.3rem 0.65rem 0.15rem;
+  color: #ffd0c2;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .nll-control-panel {
+    gap: 0.3rem;
+    right: 0.5rem;
+    left: 0.5rem;
+    width: auto;
+    justify-content: center;
+    flex-wrap: wrap;
+    border-radius: 18px;
+  }
+
+  .nll-overlay {
+    bottom: 16%;
+    width: min(94%, 720px);
+  }
+}

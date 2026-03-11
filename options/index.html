@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netflix Language Learner Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="page">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">Netflix Safari Language Learner</p>
+        <h1>Settings</h1>
+      </div>
+      <p class="lede">This scaffold keeps timing-sensitive features behind explicit availability checks. Discovery still needs to confirm Safari subtitle timing behavior on real Netflix playback.</p>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <h2>Feature Defaults</h2>
+        <div class="toggle-list">
+          <label class="toggle-row">
+            <span>
+              <strong>Extension enabled</strong>
+              <small>Master on/off state</small>
+            </span>
+            <input id="extension-enabled" type="checkbox">
+          </label>
+          <label class="toggle-row">
+            <span>
+              <strong>Dual subtitles enabled</strong>
+              <small>Show translated subtitle line below the original</small>
+            </span>
+            <input id="dual-sub-enabled" type="checkbox">
+          </label>
+          <label class="toggle-row">
+            <span>
+              <strong>Auto-pause enabled</strong>
+              <small>Only effective when the adapter exposes deterministic cue timing</small>
+            </span>
+            <input id="auto-pause-enabled" type="checkbox">
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Translation</h2>
+        <div class="field">
+          <label for="target-language">Target language</label>
+          <select id="target-language"></select>
+        </div>
+        <div class="field">
+          <label for="translation-provider">Provider</label>
+          <select id="translation-provider"></select>
+        </div>
+        <div id="provider-link-wrap" class="hint hidden">
+          <a id="provider-link" target="_blank" rel="noopener noreferrer">Get API key</a>
+        </div>
+        <div id="api-key-field" class="field hidden">
+          <label for="provider-api-key">Provider API key</label>
+          <input id="provider-api-key" type="password" autocomplete="off" spellcheck="false">
+        </div>
+        <div id="gemini-model-field" class="field hidden">
+          <label for="gemini-model">Gemini model</label>
+          <select id="gemini-model"></select>
+        </div>
+        <div id="grok-model-field" class="field hidden">
+          <label for="grok-model">Grok model</label>
+          <input id="grok-model" type="text" autocomplete="off" spellcheck="false">
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Playback And Display</h2>
+        <div class="field">
+          <label for="playback-speed">Default playback speed</label>
+          <select id="playback-speed">
+            <option value="0.75">0.75x</option>
+            <option value="1">1x</option>
+            <option value="1.25">1.25x</option>
+            <option value="1.5">1.5x</option>
+            <option value="1.75">1.75x</option>
+            <option value="2">2x</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="subtitle-font-size">Subtitle font size</label>
+          <select id="subtitle-font-size"></select>
+        </div>
+      </section>
+
+      <section class="panel panel-note">
+        <h2>Current direction</h2>
+        <ul>
+          <li><code>video.textTracks</code> is the provisional authoritative subtitle source in this scaffold.</li>
+          <li>If Safari cannot provide stable cue timing, navigation and auto-pause should remain disabled.</li>
+          <li>The injected page script is present but not yet required by the default adapter path.</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+
+  <script src="../utils/language-utils.js"></script>
+  <script src="../utils/extension-api.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
