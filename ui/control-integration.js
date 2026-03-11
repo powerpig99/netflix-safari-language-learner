@@ -2,9 +2,9 @@
   const app = globalThis.NetflixLanguageLearner = globalThis.NetflixLanguageLearner || {};
   const ui = app.ui = app.ui || {};
   const domUtils = app.domUtils;
-  const HOT_ZONE_TOP_PX = 72;
-  const HOT_ZONE_BOTTOM_PX = 120;
-  const CURSOR_HIDE_DELAY_MS = 120;
+  const HOT_ZONE_TOP_PX = 44;
+  const HOT_ZONE_BOTTOM_PX = 48;
+  const CURSOR_HIDE_DELAY_MS = 900;
 
   function createControlIntegration({ adapter, settingsStore, subtitleStore, controlActions }) {
     const panel = ui.createControlPanel({
@@ -130,8 +130,8 @@
         return false;
       }
 
-      const topThreshold = rect.top + Math.min(HOT_ZONE_TOP_PX, rect.height * 0.16);
-      const bottomThreshold = rect.bottom - Math.min(HOT_ZONE_BOTTOM_PX, rect.height * 0.22);
+      const topThreshold = rect.top + Math.min(HOT_ZONE_TOP_PX, rect.height * 0.08);
+      const bottomThreshold = rect.bottom - Math.min(HOT_ZONE_BOTTOM_PX, rect.height * 0.08);
       return clientY <= topThreshold || clientY >= bottomThreshold;
     }
 

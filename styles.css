@@ -16,7 +16,7 @@
   left: 50%;
   bottom: 1rem;
   transform: translateX(-50%);
-  width: min(92%, 1280px);
+  width: min(96%, 1480px);
   z-index: 2147482500;
   pointer-events: none;
 }

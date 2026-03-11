@@ -156,7 +156,7 @@
       const heightScale = contentRect.height / 720;
       const nextScale = Math.min(2.1, Math.max(1, Math.min(widthScale, heightScale)));
       const horizontalCenter = (contentRect.left - mountRect.left) + (contentRect.width / 2);
-      const maxWidth = Math.min(contentRect.width * 0.92, 1720);
+      const maxWidth = Math.min(contentRect.width * 0.96, 1480 * nextScale);
       const bottomLift = getBottomControlLift(contentRect);
       const videoBottomInset = Math.max(0, mountRect.bottom - contentRect.bottom);
 
