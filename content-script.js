@@ -491,6 +491,300 @@
       }).filter(Boolean);
     }
 
+    function isVisibleControlNode(node) {
+      if (!(node instanceof Element)) {
+        return false;
+      }
+
+      const style = globalThis.getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || 1) < 0.05) {
+        return false;
+      }
+
+      const rect = node.getBoundingClientRect();
+      return rect.width > 4 && rect.height > 4;
+    }
+
+    function getVisibleInteractiveOverlayElements(limit = 40) {
+      const mountTargetNode = adapter.getMountTarget();
+      if (!(mountTargetNode instanceof Element) || typeof mountTargetNode.querySelectorAll !== 'function') {
+        return [];
+      }
+
+      return Array.from(
+        mountTargetNode.querySelectorAll('button, [role="button"], a, summary')
+      ).filter((node) => {
+        if (!(node instanceof Element)) {
+          return false;
+        }
+
+        if (node.closest('.nll-control-panel, .nll-overlay, .nll-word-tooltip')) {
+          return false;
+        }
+
+        return isVisibleControlNode(node);
+      }).slice(0, limit).map((node) => {
+        const summary = summarizeNode(node);
+        if (!summary) {
+          return null;
+        }
+
+        const text = String(summary.text || '').toLowerCase();
+        const ariaLabel = String(summary.ariaLabel || '').toLowerCase();
+        return {
+          ...summary,
+          introLike: text.includes('skip') || text.includes('intro') || ariaLabel.includes('skip') || ariaLabel.includes('intro')
+        };
+      }).filter(Boolean);
+    }
+
+    function getVisibleIntroLikeElements(limit = 40) {
+      if (typeof document.querySelectorAll !== 'function') {
+        return [];
+      }
+
+      const mountTargetNode = adapter.getMountTarget();
+      return Array.from(
+        document.querySelectorAll('[aria-label], button, [role="button"], a, summary, div, span')
+      ).filter((node) => {
+        if (!(node instanceof Element)) {
+          return false;
+        }
+
+        if (node.closest('.nll-control-panel, .nll-overlay, .nll-word-tooltip')) {
+          return false;
+        }
+
+        if (!isVisibleControlNode(node)) {
+          return false;
+        }
+
+        const text = normalizeDebugText(node.textContent || '').toLowerCase();
+        const ariaLabel = String(node.getAttribute('aria-label') || '').toLowerCase();
+        return text.includes('skip') || text.includes('intro') || ariaLabel.includes('skip') || ariaLabel.includes('intro');
+      }).slice(0, limit).map((node) => {
+        const summary = summarizeNode(node);
+        if (!summary) {
+          return null;
+        }
+
+        return {
+          ...summary,
+          insideMountTarget: Boolean(mountTargetNode instanceof Element && mountTargetNode.contains(node))
+        };
+      }).filter(Boolean);
+    }
+
+    function summarizeRect(rect) {
+      if (!rect || !Number.isFinite(rect.left) || !Number.isFinite(rect.top)) {
+        return null;
+      }
+
+      return {
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height)
+      };
+    }
+
+    function rectsIntersect(a, b) {
+      if (!a || !b) {
+        return false;
+      }
+
+      return a.left < b.right
+        && a.right > b.left
+        && a.top < b.bottom
+        && a.bottom > b.top;
+    }
+
+    function getRenderedVideoBounds() {
+      const rect = getRenderedVideoRect();
+      if (!rect) {
+        return null;
+      }
+
+      return {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height
+      };
+    }
+
+    function getNativeSubtitleSignalScore(node, renderedVideoRect) {
+      const rect = node.getBoundingClientRect();
+      const text = normalizeDebugText(node.textContent || '');
+      const ariaLabel = String(node.getAttribute('aria-label') || '');
+      const className = String(node.className || '');
+      const dataUia = String(node.getAttribute('data-uia') || '');
+      const id = String(node.id || '');
+      const signalText = [className, dataUia, ariaLabel, id].join(' ').toLowerCase();
+      const centerX = rect.left + (rect.width / 2);
+      const centerY = rect.top + (rect.height / 2);
+      const videoCenterX = renderedVideoRect.left + (renderedVideoRect.width / 2);
+      const horizontalDelta = Math.abs(centerX - videoCenterX);
+      const lowerBandTop = renderedVideoRect.top + (renderedVideoRect.height * 0.45);
+      const lowerBandBottom = renderedVideoRect.bottom + 8;
+      const signals = [];
+      let score = 0;
+
+      if (text) {
+        signals.push('text');
+        score += 3;
+      }
+
+      if (/\b(subtitle|subtitles|caption|captions|timedtext|timed-text)\b/i.test(signalText)) {
+        signals.push('subtitle-signal');
+        score += 6;
+      }
+
+      if (node.tagName === 'TEXT' || node.tagName === 'text') {
+        signals.push('svg-text');
+        score += 3;
+      }
+
+      if (node.tagName === 'IMAGE' || node.tagName === 'image') {
+        signals.push('image-node');
+        score += 2;
+      }
+
+      if (centerY >= lowerBandTop && centerY <= lowerBandBottom) {
+        signals.push('lower-band');
+        score += 3;
+      }
+
+      if (horizontalDelta <= renderedVideoRect.width * 0.2) {
+        signals.push('centered');
+        score += 2;
+      }
+
+      if (rect.width >= renderedVideoRect.width * 0.18) {
+        signals.push('wide');
+        score += 1;
+      }
+
+      return {
+        score,
+        signals,
+        horizontalDelta: Math.round(horizontalDelta),
+        text
+      };
+    }
+
+    function getVisibleNativeSubtitleCandidates(limit = 60) {
+      const mountTargetNode = adapter.getMountTarget();
+      const renderedVideoRect = getRenderedVideoBounds();
+      if (!(mountTargetNode instanceof Element) || !renderedVideoRect) {
+        return [];
+      }
+
+      const overlayNode = document.querySelector('.nll-overlay');
+      const overlayRect = overlayNode instanceof Element ? overlayNode.getBoundingClientRect() : null;
+      const candidateSelector = [
+        'div',
+        'span',
+        'p',
+        'section',
+        '[aria-label]',
+        '[data-uia]',
+        'svg',
+        'text',
+        'image',
+        'foreignObject'
+      ].join(', ');
+
+      return Array.from(mountTargetNode.querySelectorAll(candidateSelector)).filter((node) => {
+        if (!(node instanceof Element)) {
+          return false;
+        }
+
+        if (node.closest('.nll-control-panel, .nll-overlay, .nll-word-tooltip')) {
+          return false;
+        }
+
+        if (!isVisibleControlNode(node)) {
+          return false;
+        }
+
+        const rect = node.getBoundingClientRect();
+        const rectBounds = {
+          left: rect.left,
+          right: rect.right,
+          top: rect.top,
+          bottom: rect.bottom
+        };
+
+        if (!rectsIntersect(rectBounds, renderedVideoRect)) {
+          return false;
+        }
+
+        if (overlayRect && rectsIntersect(rectBounds, {
+          left: overlayRect.left,
+          right: overlayRect.right,
+          top: overlayRect.top,
+          bottom: overlayRect.bottom
+        })) {
+          return false;
+        }
+
+        const score = getNativeSubtitleSignalScore(node, renderedVideoRect);
+        return score.score >= 4;
+      }).map((node) => {
+        const summary = summarizeNode(node);
+        if (!summary) {
+          return null;
+        }
+
+        const rect = node.getBoundingClientRect();
+        const score = getNativeSubtitleSignalScore(node, renderedVideoRect);
+        const bottomOffset = Math.round(renderedVideoRect.bottom - rect.bottom);
+        const centerY = rect.top + (rect.height / 2);
+        return {
+          ...summary,
+          score: score.score,
+          signals: score.signals,
+          horizontalDelta: score.horizontalDelta,
+          baselineOffsetFromVideoBottom: bottomOffset,
+          centerYWithinVideo: Math.round(centerY - renderedVideoRect.top)
+        };
+      }).filter(Boolean).sort((left, right) => right.score - left.score).slice(0, limit);
+    }
+
+    function getSubtitleBandSampleStacks(renderedVideoRect) {
+      if (!renderedVideoRect) {
+        return [];
+      }
+
+      const samplePoints = [
+        ['subtitle-band-center-1', 0.5, 0.84],
+        ['subtitle-band-center-2', 0.5, 0.88],
+        ['subtitle-band-center-3', 0.5, 0.92],
+        ['subtitle-band-left', 0.35, 0.88],
+        ['subtitle-band-right', 0.65, 0.88]
+      ];
+
+      return samplePoints.map(([label, xRatio, yRatio]) => {
+        const x = renderedVideoRect.left + (renderedVideoRect.width * xRatio);
+        const y = renderedVideoRect.top + (renderedVideoRect.height * yRatio);
+        return {
+          label,
+          point: {
+            x: Math.round(x),
+            y: Math.round(y)
+          },
+          elements: document.elementsFromPoint(x, y).filter((node) => {
+            return node instanceof Element && !node.closest('.nll-control-panel, .nll-overlay, .nll-word-tooltip');
+          }).slice(0, 12).map((node) => {
+            return summarizeNode(node);
+          }).filter(Boolean)
+        };
+      });
+    }
+
     function buildVisibilityTraceRecord(stage, detail = {}, traceTargets = getVisibilityTraceTargets()) {
       const {
         mountTargetNode,
@@ -662,6 +956,202 @@
         records
       }, null, 2);
       const filename = 'netflix-language-learner-visibility-trace.json';
+      const blob = new Blob([payload], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = filename;
+      document.documentElement.appendChild(link);
+      link.click();
+      link.remove();
+
+      globalThis.setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
+
+      return {
+        filename,
+        recordCount: records.length
+      };
+    }
+
+    async function saveNativeControlOverlayTrace(durationMs = 10000) {
+      const {
+        mountTargetNode,
+        playerNode,
+        playerViewNode,
+        videoNode,
+        evidenceOverlayNode
+      } = getVisibilityTraceTargets();
+      const records = [];
+      let lastPointer = null;
+
+      function record(stage, detail = {}) {
+        records.push(buildVisibilityTraceRecord(stage, {
+          ...detail,
+          pointer: lastPointer,
+          visibleInteractiveOverlayElements: getVisibleInteractiveOverlayElements(),
+          visibleIntroLikeElements: getVisibleIntroLikeElements()
+        }, {
+          mountTargetNode,
+          playerNode,
+          playerViewNode,
+          videoNode,
+          evidenceOverlayNode
+        }));
+      }
+
+      function handleMousemove(event) {
+        lastPointer = {
+          clientX: Math.round(event.clientX),
+          clientY: Math.round(event.clientY)
+        };
+        record('mousemove', lastPointer);
+      }
+
+      const observer = new MutationObserver((mutations) => {
+        record('mutation', {
+          mutations: mutations.slice(0, 30).map((mutation) => ({
+            type: mutation.type,
+            target: summarizeNode(mutation.target),
+            attributeName: mutation.attributeName || null,
+            oldValue: mutation.oldValue || null
+          }))
+        });
+      });
+
+      if (mountTargetNode instanceof Element) {
+        observer.observe(mountTargetNode, {
+          subtree: true,
+          childList: true,
+          attributes: true,
+          attributeFilter: ['class', 'style', 'aria-hidden', 'hidden', 'data-uia'],
+          attributeOldValue: true
+        });
+      }
+
+      const sampleTimer = globalThis.setInterval(() => {
+        record('sample', {});
+      }, 100);
+      document.addEventListener('mousemove', handleMousemove, true);
+
+      record('start', {
+        durationMs: Math.max(1000, Number(durationMs) || 10000)
+      });
+
+      await new Promise((resolve) => {
+        globalThis.setTimeout(resolve, Math.max(1000, Number(durationMs) || 10000));
+      });
+
+      observer.disconnect();
+      globalThis.clearInterval(sampleTimer);
+      document.removeEventListener('mousemove', handleMousemove, true);
+      record('end', {});
+
+      const payload = JSON.stringify({
+        exportedAt: new Date().toISOString(),
+        href: globalThis.location.href,
+        durationMs: Math.max(1000, Number(durationMs) || 10000),
+        records
+      }, null, 2);
+      const filename = 'netflix-language-learner-native-overlay-trace.json';
+      const blob = new Blob([payload], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = filename;
+      document.documentElement.appendChild(link);
+      link.click();
+      link.remove();
+
+      globalThis.setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
+
+      return {
+        filename,
+        recordCount: records.length
+      };
+    }
+
+    async function saveNativeSubtitleBaselineTrace(durationMs = 8000) {
+      const {
+        mountTargetNode,
+        playerNode,
+        playerViewNode,
+        videoNode,
+        evidenceOverlayNode
+      } = getVisibilityTraceTargets();
+      const records = [];
+
+      function record(stage, detail = {}) {
+        const renderedVideoRect = getRenderedVideoBounds();
+        const overlayNode = document.querySelector('.nll-overlay');
+        const subtitleState = subtitleStore.getState();
+
+        records.push({
+          ...buildVisibilityTraceRecord(stage, detail, {
+            mountTargetNode,
+            playerNode,
+            playerViewNode,
+            videoNode,
+            evidenceOverlayNode
+          }),
+          renderedVideoRect: summarizeRect(renderedVideoRect),
+          overlayRect: overlayNode instanceof Element ? summarizeRect(overlayNode.getBoundingClientRect()) : null,
+          nativeSubtitleCandidates: getVisibleNativeSubtitleCandidates(),
+          subtitleBandStacks: getSubtitleBandSampleStacks(renderedVideoRect),
+          activeCue: subtitleState.activeSubtitle?.cue || null,
+          preferredTranslationCue: subtitleState.preferredTranslation?.cue || null
+        });
+      }
+
+      const observer = new MutationObserver((mutations) => {
+        record('mutation', {
+          mutations: mutations.slice(0, 40).map((mutation) => ({
+            type: mutation.type,
+            target: summarizeNode(mutation.target),
+            attributeName: mutation.attributeName || null,
+            oldValue: mutation.oldValue || null
+          }))
+        });
+      });
+
+      if (mountTargetNode instanceof Element) {
+        observer.observe(mountTargetNode, {
+          subtree: true,
+          childList: true,
+          attributes: true,
+          attributeFilter: ['class', 'style', 'aria-hidden', 'hidden', 'data-uia'],
+          attributeOldValue: true
+        });
+      }
+
+      const sampleTimer = globalThis.setInterval(() => {
+        record('sample', {});
+      }, 100);
+
+      record('start', {
+        durationMs: Math.max(1000, Number(durationMs) || 8000)
+      });
+
+      await new Promise((resolve) => {
+        globalThis.setTimeout(resolve, Math.max(1000, Number(durationMs) || 8000));
+      });
+
+      observer.disconnect();
+      globalThis.clearInterval(sampleTimer);
+      record('end', {});
+
+      const payload = JSON.stringify({
+        exportedAt: new Date().toISOString(),
+        href: globalThis.location.href,
+        durationMs: Math.max(1000, Number(durationMs) || 8000),
+        records
+      }, null, 2);
+      const filename = 'netflix-language-learner-native-subtitle-baseline-trace.json';
       const blob = new Blob([payload], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -1058,7 +1548,15 @@
       },
       saveVisibleControlsLog,
       saveVisibilityTrace,
+      saveNativeControlOverlayTrace,
+      saveNativeSubtitleBaselineTrace,
       savePlaybackTransitionTrace,
+      armRecentVisibilityTrace() {
+        getRollingVisibilityRecorder();
+        return {
+          armed: true
+        };
+      },
       saveRecentVisibilityTrace(windowMs = 5000) {
         return getRollingVisibilityRecorder().saveRecent(windowMs);
       }

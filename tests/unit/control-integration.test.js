@@ -75,6 +75,14 @@ class FakeElement {
     this.parentElement = null;
   }
 
+  contains(node) {
+    if (node === this) {
+      return true;
+    }
+
+    return this.children.some((child) => typeof child.contains === 'function' && child.contains(node));
+  }
+
   addEventListener(type, handler, options) {
     const capture = options === true || options?.capture === true;
     const entries = this.listeners.get(type) || [];
@@ -147,9 +155,32 @@ function createStore(initialState) {
 
 function loadControlIntegrationHarness() {
   const panelElement = new FakeElement('div');
+  panelElement._rect = {
+    left: 60,
+    top: 0,
+    right: 100,
+    bottom: 40,
+    width: 40,
+    height: 40
+  };
   const mountTarget = new FakeElement('div');
   const video = new FakeElement('video');
   mountTarget.appendChild(video);
+  const controlRegionNode = new FakeElement('button');
+  controlRegionNode._rect = {
+    left: 120,
+    top: 70,
+    right: 180,
+    bottom: 110,
+    width: 60,
+    height: 40
+  };
+  mountTarget.appendChild(controlRegionNode);
+  const panelState = {
+    visible: false,
+    payload: null
+  };
+  let elementsFromPointStack = [];
 
   const keyboard = {
     config: {
@@ -194,7 +225,10 @@ function loadControlIntegrationHarness() {
     Element: FakeElement,
     document: {
       documentElement: new FakeElement('html'),
-      body: new FakeElement('body')
+      body: new FakeElement('body'),
+      elementsFromPoint() {
+        return elementsFromPointStack;
+      }
     },
     getComputedStyle: () => ({
       display: 'block',
@@ -231,10 +265,11 @@ function loadControlIntegrationHarness() {
           return {
             element: panelElement,
             setVisible(value) {
-              this.visible = Boolean(value);
+              panelState.visible = Boolean(value);
+              panelElement.classList.toggle('is-visible', Boolean(value));
             },
             update(payload) {
-              this.payload = payload;
+              panelState.payload = payload;
             }
           };
         }
@@ -280,7 +315,13 @@ function loadControlIntegrationHarness() {
     subtitleStore,
     keyboard,
     mountTarget,
-    controlCalls
+    controlCalls,
+    controlRegionNode,
+    setElementsFromPoint(stack) {
+      elementsFromPointStack = stack;
+    },
+    panelElement,
+    panelState
   };
 }
 
@@ -353,6 +394,79 @@ describe('Control integration playback ownership lifecycle', () => {
 
     assert.equal(inactiveClickEvent.preventDefaultCalled, false);
     assert.deepEqual(harness.controlCalls, ['togglePlayPause']);
+
+    harness.integration.destroy();
+  });
+
+  test('keeps panel and cursor visible while hovering the panel after the cursor timer expires', async () => {
+    const harness = loadControlIntegrationHarness();
+    harness.adapterState.active = true;
+    harness.subtitleStore.set({ playerReady: true });
+
+    harness.mountTarget.emit('mousemove', {
+      clientX: 50,
+      clientY: 95
+    }, false);
+
+    assert.equal(harness.panelState.visible, true);
+    assert.equal(harness.mountTarget.classList.contains('nll-cursor-visible'), true);
+
+    harness.mountTarget.emit('mousemove', {
+      clientX: 80,
+      clientY: 20
+    }, false);
+
+    await new Promise((resolve) => setTimeout(resolve, 950));
+
+    assert.equal(harness.panelState.visible, true);
+    assert.equal(harness.mountTarget.classList.contains('nll-cursor-visible'), true);
+
+    harness.mountTarget.emit('mousemove', {
+      clientX: 50,
+      clientY: 50
+    }, false);
+
+    assert.equal(harness.panelState.visible, true);
+    assert.equal(harness.mountTarget.classList.contains('nll-cursor-visible'), true);
+
+    await new Promise((resolve) => setTimeout(resolve, 2050));
+
+    assert.equal(harness.panelState.visible, false);
+    assert.equal(harness.mountTarget.classList.contains('nll-cursor-visible'), false);
+
+    harness.integration.destroy();
+  });
+
+  test('keeps controls visible while the pointer stays over a visible native control region after the timer expires', async () => {
+    const harness = loadControlIntegrationHarness();
+    harness.adapterState.active = true;
+    harness.subtitleStore.set({ playerReady: true });
+    harness.mountTarget.querySelectorAll = () => [harness.controlRegionNode];
+    harness.setElementsFromPoint([harness.controlRegionNode]);
+
+    harness.mountTarget.emit('mousemove', {
+      clientX: 140,
+      clientY: 90
+    }, false);
+
+    assert.equal(harness.panelState.visible, true);
+    assert.equal(harness.mountTarget.classList.contains('nll-cursor-visible'), true);
+
+    await new Promise((resolve) => setTimeout(resolve, 950));
+
+    assert.equal(harness.panelState.visible, true);
+    assert.equal(harness.mountTarget.classList.contains('nll-cursor-visible'), true);
+
+    harness.setElementsFromPoint([]);
+    harness.mountTarget.emit('mousemove', {
+      clientX: 50,
+      clientY: 50
+    }, false);
+
+    await new Promise((resolve) => setTimeout(resolve, 950));
+
+    assert.equal(harness.panelState.visible, false);
+    assert.equal(harness.mountTarget.classList.contains('nll-cursor-visible'), false);
 
     harness.integration.destroy();
   });

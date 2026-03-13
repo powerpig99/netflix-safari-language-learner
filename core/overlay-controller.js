@@ -4,6 +4,8 @@
   const domUtils = app.domUtils;
   const languageUtils = app.languageUtils;
   const extensionApi = app.extensionApi;
+  const BASE_SUBTITLE_BOTTOM_INSET_RATIO = 0.14;
+  const MIN_SUBTITLE_BOTTOM_INSET_PX = 56;
 
   function traceTranslation(stage, detail) {
     if (globalThis.__NLL_TRACE_TRANSLATION__ === false) {
@@ -24,6 +26,7 @@
     let resizeObserver = null;
     let observedScaleTarget = null;
     let layoutTimer = null;
+    let layoutFrame = null;
 
     function getLayoutRects() {
       if (!root || !mountTarget || typeof mountTarget.getBoundingClientRect !== 'function') {
@@ -92,17 +95,25 @@
       return rect.width > 4 && rect.height > 4;
     }
 
-    function getBottomControlLift(contentRect) {
+    function getBaseSubtitleBottomInset(contentRect) {
+      return Math.max(
+        MIN_SUBTITLE_BOTTOM_INSET_PX,
+        Math.round(contentRect.height * BASE_SUBTITLE_BOTTOM_INSET_RATIO)
+      );
+    }
+
+    function getBottomControlLift(contentRect, baseBottomInset) {
       if (!mountTarget || typeof mountTarget.querySelectorAll !== 'function') {
-        return Math.max(14, Math.round(contentRect.height * 0.02));
+        return baseBottomInset;
       }
 
-      const defaultLift = Math.max(14, Math.round(contentRect.height * 0.02));
       const interactiveNodes = mountTarget.querySelectorAll('button, [role="button"], input, [aria-label], [data-uia]');
       const overlayRect = root ? root.getBoundingClientRect() : null;
-      const projectedOverlayHeight = overlayRect && overlayRect.height ? overlayRect.height : 72;
-      const projectedOverlayTop = contentRect.bottom - defaultLift - projectedOverlayHeight;
-      let overlapLift = defaultLift;
+      const projectedOverlayHeight = overlayRect && overlayRect.height
+        ? overlayRect.height
+        : Math.max(root?.scrollHeight || 0, 72);
+      const projectedOverlayTop = contentRect.bottom - baseBottomInset - projectedOverlayHeight;
+      let overlapLift = baseBottomInset;
 
       interactiveNodes.forEach((node) => {
         if (!(node instanceof Element)) {
@@ -130,7 +141,7 @@
           return;
         }
 
-        const overlapsProjectedSubtitleBand = rect.top < (contentRect.bottom - defaultLift)
+        const overlapsProjectedSubtitleBand = rect.top < (contentRect.bottom - baseBottomInset)
           && rect.bottom > projectedOverlayTop;
         if (!overlapsProjectedSubtitleBand) {
           return;
@@ -157,7 +168,8 @@
       const nextScale = Math.min(2.1, Math.max(1, Math.min(widthScale, heightScale)));
       const horizontalCenter = (contentRect.left - mountRect.left) + (contentRect.width / 2);
       const maxWidth = Math.min(contentRect.width * 0.96, 1480 * nextScale);
-      const bottomLift = getBottomControlLift(contentRect);
+      const baseBottomInset = getBaseSubtitleBottomInset(contentRect);
+      const bottomLift = getBottomControlLift(contentRect, baseBottomInset);
       const videoBottomInset = Math.max(0, mountRect.bottom - contentRect.bottom);
 
       root.style.setProperty('--nll-video-scale', String(nextScale.toFixed(3)));
@@ -166,21 +178,32 @@
       root.style.bottom = `${Math.round(videoBottomInset + bottomLift)}px`;
     }
 
+    function requestLayoutUpdate() {
+      if (layoutFrame !== null) {
+        return;
+      }
+
+      layoutFrame = globalThis.requestAnimationFrame(() => {
+        layoutFrame = null;
+        updateLayoutMetrics();
+      });
+    }
+
     function observeVideoScaleTarget() {
       if (typeof ResizeObserver !== 'function') {
-        updateLayoutMetrics();
+        requestLayoutUpdate();
         return;
       }
 
       const scaleTarget = adapter.getVideo() || mountTarget;
       if (!scaleTarget || observedScaleTarget === scaleTarget) {
-        updateLayoutMetrics();
+        requestLayoutUpdate();
         return;
       }
 
       if (!resizeObserver) {
         resizeObserver = new ResizeObserver(() => {
-          updateLayoutMetrics();
+          requestLayoutUpdate();
         });
       }
 
@@ -190,7 +213,7 @@
 
       observedScaleTarget = scaleTarget;
       resizeObserver.observe(scaleTarget);
-      updateLayoutMetrics();
+      requestLayoutUpdate();
     }
 
     function buildContextWindow(activeCue, timeline) {
@@ -259,7 +282,7 @@
       observeVideoScaleTarget();
       if (!layoutTimer) {
         layoutTimer = globalThis.setInterval(() => {
-          updateLayoutMetrics();
+          requestLayoutUpdate();
         }, 250);
       }
 
@@ -360,6 +383,7 @@
 
       statusLine.hidden = !state.platformError;
       statusLine.textContent = state.platformError || '';
+      requestLayoutUpdate();
     }
 
     const unsubscribeSettings = settingsStore.subscribe(render);
@@ -379,6 +403,10 @@
         }
         if (resizeObserver) {
           resizeObserver.disconnect();
+        }
+        if (layoutFrame !== null) {
+          globalThis.cancelAnimationFrame(layoutFrame);
+          layoutFrame = null;
         }
         if (layoutTimer) {
           globalThis.clearInterval(layoutTimer);

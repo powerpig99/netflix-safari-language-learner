@@ -6,6 +6,7 @@
   const HOT_ZONE_TOP_PX = 44;
   const HOT_ZONE_BOTTOM_PX = 48;
   const CURSOR_HIDE_DELAY_MS = 900;
+  const PANEL_LEAVE_HIDE_DELAY_MS = 2000;
   const TOOLTIP_CURSOR_EVENT = 'nll:cursor-activity';
   const CONTROL_REGION_SELECTORS = [
     '.watch-video--back-container',
@@ -16,6 +17,12 @@
     '[data-uia="video-title"]',
     '[data-uia="controls-time-remaining"]',
     '[data-uia^="control-"]'
+  ].join(', ');
+  const INTERACTIVE_CONTROL_SELECTORS = [
+    'button',
+    '[role="button"]',
+    'a',
+    'summary'
   ].join(', ');
 
   function logControls(stage, detail) {
@@ -64,6 +71,7 @@
     let controlsVisible = false;
     let cursorVisible = false;
     let cursorTimer = null;
+    let lastPointerPosition = null;
     let cleanupVisibilityListeners = null;
     let cleanupPlaybackControlListeners = null;
     const rootCursorClass = 'nll-root-cursor-hidden';
@@ -194,6 +202,32 @@
         return false;
       }
 
+      if (typeof document.elementsFromPoint === 'function') {
+        const pointStack = document.elementsFromPoint(clientX, clientY);
+        for (const node of pointStack) {
+          if (!(node instanceof Element)) {
+            continue;
+          }
+
+          if (!mountTarget.contains(node)) {
+            continue;
+          }
+
+          if (node.closest('.nll-control-panel, .nll-overlay, .nll-word-tooltip')) {
+            continue;
+          }
+
+          const interactiveNode = node.closest(INTERACTIVE_CONTROL_SELECTORS);
+          if (!interactiveNode || !mountTarget.contains(interactiveNode)) {
+            continue;
+          }
+
+          if (isVisibleControlNode(interactiveNode)) {
+            return true;
+          }
+        }
+      }
+
       return Array.from(mountTarget.querySelectorAll(CONTROL_REGION_SELECTORS)).some((node) => {
         if (!isVisibleControlNode(node)) {
           return false;
@@ -212,8 +246,8 @@
     }
 
     function syncUi(reason) {
-      const shouldShowControls = Boolean(controlsVisible && cursorVisible && visibilityEnabled);
-      const shouldShowCursor = Boolean(cursorVisible && visibilityEnabled);
+      const shouldShowControls = Boolean(visibilityEnabled && (panelHovered || (controlsVisible && cursorVisible)));
+      const shouldShowCursor = Boolean(visibilityEnabled && (panelHovered || cursorVisible));
       panel.setVisible(shouldShowControls);
 
       document.documentElement.classList.toggle(rootCursorClass, visibilityEnabled && !shouldShowCursor);
@@ -241,19 +275,68 @@
       }
     }
 
-    function setCursorVisible(isVisible, { reason = null } = {}) {
+    function getKeepVisibleRegion(pointer) {
+      if (!pointer || typeof pointer.clientX !== 'number' || typeof pointer.clientY !== 'number') {
+        return null;
+      }
+
+      if (isWithinPanelRegion(pointer.clientX, pointer.clientY)) {
+        return 'panel';
+      }
+
+      if (isWithinVisibleControlRegion(pointer.clientX, pointer.clientY)) {
+        return 'control-region';
+      }
+
+      if (isInHotZone(pointer.clientX, pointer.clientY)) {
+        return 'hotzone';
+      }
+
+      return null;
+    }
+
+    function setCursorVisible(isVisible, { reason = null, delayMs = CURSOR_HIDE_DELAY_MS } = {}) {
       cursorVisible = Boolean(isVisible);
       clearCursorTimer();
       syncUi(reason || (cursorVisible ? 'cursor-visible' : 'cursor-hidden'));
+      logControls('cursor:set-visible', {
+        visible: cursorVisible,
+        reason: reason || null,
+        delayMs,
+        panelHovered,
+        controlsVisible
+      });
 
       if (cursorVisible) {
         cursorTimer = globalThis.setTimeout(() => {
+          const keepRegion = visibilityEnabled ? getKeepVisibleRegion(lastPointerPosition) : null;
+          if (keepRegion) {
+            panelHovered = keepRegion === 'panel';
+            controlsVisible = true;
+            cursorVisible = true;
+            logControls('cursor:timer-keep-region', {
+              keepRegion,
+              pointer: lastPointerPosition
+            });
+            syncUi(`cursor-timer-keep-${keepRegion}`);
+            cursorTimer = null;
+            setCursorVisible(true, {
+              reason: `cursor-timer-keep-${keepRegion}`,
+              delayMs
+            });
+            return;
+          }
+
           cursorVisible = false;
           controlsVisible = false;
           panelHovered = false;
+          logControls('cursor:timer-hide', {
+            panelHovered,
+            controlsVisible
+          });
           syncUi('cursor-timer-hide');
           cursorTimer = null;
-        }, CURSOR_HIDE_DELAY_MS);
+        }, Math.max(0, Number(delayMs) || 0));
       }
     }
 
@@ -272,6 +355,26 @@
       return clientY <= topThreshold || clientY >= bottomThreshold;
     }
 
+    function isWithinPanelRegion(clientX, clientY) {
+      if (!(panel.element instanceof Element)) {
+        return false;
+      }
+
+      if (!panel.element.classList.contains('is-visible')) {
+        return false;
+      }
+
+      const rect = panel.element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        return false;
+      }
+
+      return clientX >= rect.left
+        && clientX <= rect.right
+        && clientY >= rect.top
+        && clientY <= rect.bottom;
+    }
+
     function installVisibilityListeners() {
       if (!mountTarget) {
         return () => {};
@@ -283,19 +386,36 @@
         if (!visibilityEnabled) {
           controlsVisible = false;
           cursorVisible = false;
+          lastPointerPosition = null;
           clearCursorTimer();
           syncUi('mousemove-disabled');
           return;
         }
 
-        const inHotZone = isInHotZone(event.clientX, event.clientY);
-        const inControlRegion = isWithinVisibleControlRegion(event.clientX, event.clientY);
-        if (panelHovered) {
+        lastPointerPosition = {
+          clientX: event.clientX,
+          clientY: event.clientY
+        };
+        const wasPanelHovered = panelHovered;
+        const inPanelRegion = isWithinPanelRegion(event.clientX, event.clientY);
+        panelHovered = inPanelRegion;
+        if (inPanelRegion) {
           controlsVisible = true;
           setCursorVisible(true, { reason: 'mousemove-panel-hover' });
           return;
         }
 
+        if (wasPanelHovered) {
+          controlsVisible = true;
+          setCursorVisible(true, {
+            reason: 'panel-leave-delay',
+            delayMs: PANEL_LEAVE_HIDE_DELAY_MS
+          });
+          return;
+        }
+
+        const inHotZone = isInHotZone(event.clientX, event.clientY);
+        const inControlRegion = isWithinVisibleControlRegion(event.clientX, event.clientY);
         controlsVisible = inHotZone || inControlRegion;
         setCursorVisible(true, {
           reason: inHotZone
@@ -309,35 +429,8 @@
         controlsVisible = false;
         cursorVisible = false;
         panelHovered = false;
+        lastPointerPosition = null;
         syncUi('mouseleave');
-      }
-
-      function handlePanelEnter() {
-        if (!visibilityEnabled || !cursorVisible) {
-          return;
-        }
-
-        panelHovered = true;
-        controlsVisible = true;
-        setCursorVisible(true, { reason: 'panel-enter' });
-      }
-
-      function handlePanelLeave(event) {
-        panelHovered = false;
-        if (!event || typeof event.clientX !== 'number' || typeof event.clientY !== 'number') {
-          controlsVisible = false;
-          syncUi('panel-leave-no-pointer');
-          return;
-        }
-
-        const inHotZone = isInHotZone(event.clientX, event.clientY);
-        const inControlRegion = isWithinVisibleControlRegion(event.clientX, event.clientY);
-        controlsVisible = inHotZone || inControlRegion;
-        syncUi(
-          inHotZone
-            ? 'panel-leave-hotzone'
-            : (inControlRegion ? 'panel-leave-control-region' : 'panel-leave-nonhotzone')
-        );
       }
 
       function handleTooltipCursorActivity(event) {
@@ -354,8 +447,6 @@
 
       visibilityTarget.addEventListener('mousemove', handlePointerMove, { passive: true });
       visibilityTarget.addEventListener('mouseleave', handlePointerLeave, { passive: true });
-      panel.element.addEventListener('mouseenter', handlePanelEnter, { passive: true });
-      panel.element.addEventListener('mouseleave', handlePanelLeave, { passive: true });
       globalThis.addEventListener(TOOLTIP_CURSOR_EVENT, handleTooltipCursorActivity);
       controlsVisible = false;
       cursorVisible = false;
@@ -366,8 +457,6 @@
         clearCursorTimer();
         visibilityTarget.removeEventListener('mousemove', handlePointerMove);
         visibilityTarget.removeEventListener('mouseleave', handlePointerLeave);
-        panel.element.removeEventListener('mouseenter', handlePanelEnter);
-        panel.element.removeEventListener('mouseleave', handlePanelLeave);
         globalThis.removeEventListener(TOOLTIP_CURSOR_EVENT, handleTooltipCursorActivity);
         document.documentElement.classList.remove(rootCursorClass);
         if (document.body) {
