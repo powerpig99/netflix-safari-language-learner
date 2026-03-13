@@ -8,6 +8,7 @@
     autoPauseEnabled: false,
     playbackSpeed: 1,
     targetLanguage: 'EN-US',
+    useNetflixTargetSubtitlesIfAvailable: false,
     translationProvider: 'google',
     subtitleFontSize: 'medium',
     googleCloudApiKey: '',
@@ -233,6 +234,7 @@
 
   function toTranslationKey(title, targetLanguage, text) {
     return [
+      normalizeCueText(title),
       normalizeLanguageCode(targetLanguage),
       normalizeCueText(text)
     ].join('::');

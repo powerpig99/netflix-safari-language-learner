@@ -1,0 +1,673 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		F10BC9D02F633B4300524357 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10BC9CF2F633B4300524357 /* AppDelegate.swift */; };
+		F10BC9D42F633B4300524357 /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = F10BC9D22F633B4300524357 /* Main.html */; };
+		F10BC9D62F633B4300524357 /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = F10BC9D52F633B4300524357 /* Icon.png */; };
+		F10BC9D82F633B4300524357 /* Style.css in Resources */ = {isa = PBXBuildFile; fileRef = F10BC9D72F633B4300524357 /* Style.css */; };
+		F10BC9DA2F633B4300524357 /* Script.js in Resources */ = {isa = PBXBuildFile; fileRef = F10BC9D92F633B4300524357 /* Script.js */; };
+		F10BC9DC2F633B4300524357 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10BC9DB2F633B4300524357 /* ViewController.swift */; };
+		F10BC9DF2F633B4300524357 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = F10BC9DD2F633B4300524357 /* Main.storyboard */; };
+		F10BC9E12F633B4300524357 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F10BC9E02F633B4300524357 /* Assets.xcassets */; };
+		F10BC9E82F633B4300524357 /* Netflix Safari Language Learner Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F10BC9E72F633B4300524357 /* Netflix Safari Language Learner Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		F10BC9ED2F633B4300524357 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10BC9EC2F633B4300524357 /* SafariWebExtensionHandler.swift */; };
+		F10BCA0C2F633B4300524357 /* database.js in Resources */ = {isa = PBXBuildFile; fileRef = F10BC9F92F633B4300524357 /* database.js */; };
+		F10BCA0D2F633B4300524357 /* ui in Resources */ = {isa = PBXBuildFile; fileRef = F10BC9FA2F633B4300524357 /* ui */; };
+		F10BCA0E2F633B4300524357 /* options in Resources */ = {isa = PBXBuildFile; fileRef = F10BC9FB2F633B4300524357 /* options */; };
+		F10BCA0F2F633B4300524357 /* popup.js in Resources */ = {isa = PBXBuildFile; fileRef = F10BC9FC2F633B4300524357 /* popup.js */; };
+		F10BCA102F633B4300524357 /* core in Resources */ = {isa = PBXBuildFile; fileRef = F10BC9FD2F633B4300524357 /* core */; };
+		F10BCA112F633B4300524357 /* styles.css in Resources */ = {isa = PBXBuildFile; fileRef = F10BC9FE2F633B4300524357 /* styles.css */; };
+		F10BCA122F633B4300524357 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = F10BC9FF2F633B4300524357 /* background.js */; };
+		F10BCA132F633B4300524357 /* popup.html in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA002F633B4300524357 /* popup.html */; };
+		F10BCA142F633B4300524357 /* platform in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA012F633B4300524357 /* platform */; };
+		F10BCA152F633B4300524357 /* tests in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA022F633B4300524357 /* tests */; };
+		F10BCA162F633B4300524357 /* safari-xcode in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA032F633B4300524357 /* safari-xcode */; };
+		F10BCA172F633B4300524357 /* PROJECT_SPEC.md in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA042F633B4300524357 /* PROJECT_SPEC.md */; };
+		F10BCA182F633B4300524357 /* utils in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA052F633B4300524357 /* utils */; };
+		F10BCA192F633B4300524357 /* docs in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA062F633B4300524357 /* docs */; };
+		F10BCA1A2F633B4300524357 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA072F633B4300524357 /* README.md */; };
+		F10BCA1B2F633B4300524357 /* icons in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA082F633B4300524357 /* icons */; };
+		F10BCA1C2F633B4300524357 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA092F633B4300524357 /* manifest.json */; };
+		F10BCA1D2F633B4300524357 /* content-script.js in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA0A2F633B4300524357 /* content-script.js */; };
+		F10BCA1E2F633B4300524357 /* inject.js in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA0B2F633B4300524357 /* inject.js */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		F10BC9E92F633B4300524357 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F10BC9C42F633B4300524357 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F10BC9E62F633B4300524357;
+			remoteInfo = "Netflix Safari Language Learner Extension";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		F10BC9F42F633B4300524357 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				F10BC9E82F633B4300524357 /* Netflix Safari Language Learner Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		F10BC9CC2F633B4300524357 /* Netflix Safari Language Learner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Netflix Safari Language Learner.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F10BC9CF2F633B4300524357 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		F10BC9D32F633B4300524357 /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = Base; path = Base.lproj/Main.html; sourceTree = "<group>"; };
+		F10BC9D52F633B4300524357 /* Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon.png; sourceTree = "<group>"; };
+		F10BC9D72F633B4300524357 /* Style.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = Style.css; sourceTree = "<group>"; };
+		F10BC9D92F633B4300524357 /* Script.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Script.js; sourceTree = "<group>"; };
+		F10BC9DB2F633B4300524357 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		F10BC9DE2F633B4300524357 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		F10BC9E02F633B4300524357 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		F10BC9E22F633B4300524357 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		F10BC9E72F633B4300524357 /* Netflix Safari Language Learner Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Netflix Safari Language Learner Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F10BC9EC2F633B4300524357 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
+		F10BC9EE2F633B4300524357 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		F10BC9F92F633B4300524357 /* database.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = database.js; path = ../../../database.js; sourceTree = "<group>"; };
+		F10BC9FA2F633B4300524357 /* ui */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ui; path = ../../../ui; sourceTree = "<group>"; };
+		F10BC9FB2F633B4300524357 /* options */ = {isa = PBXFileReference; lastKnownFileType = folder; name = options; path = ../../../options; sourceTree = "<group>"; };
+		F10BC9FC2F633B4300524357 /* popup.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = popup.js; path = ../../../popup.js; sourceTree = "<group>"; };
+		F10BC9FD2F633B4300524357 /* core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = core; path = ../../../core; sourceTree = "<group>"; };
+		F10BC9FE2F633B4300524357 /* styles.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; name = styles.css; path = ../../../styles.css; sourceTree = "<group>"; };
+		F10BC9FF2F633B4300524357 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = ../../../background.js; sourceTree = "<group>"; };
+		F10BCA002F633B4300524357 /* popup.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = popup.html; path = ../../../popup.html; sourceTree = "<group>"; };
+		F10BCA012F633B4300524357 /* platform */ = {isa = PBXFileReference; lastKnownFileType = folder; name = platform; path = ../../../platform; sourceTree = "<group>"; };
+		F10BCA022F633B4300524357 /* tests */ = {isa = PBXFileReference; lastKnownFileType = folder; name = tests; path = ../../../tests; sourceTree = "<group>"; };
+		F10BCA032F633B4300524357 /* safari-xcode */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "safari-xcode"; path = ../..; sourceTree = "<group>"; };
+		F10BCA042F633B4300524357 /* PROJECT_SPEC.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = PROJECT_SPEC.md; path = ../../../PROJECT_SPEC.md; sourceTree = "<group>"; };
+		F10BCA052F633B4300524357 /* utils */ = {isa = PBXFileReference; lastKnownFileType = folder; name = utils; path = ../../../utils; sourceTree = "<group>"; };
+		F10BCA062F633B4300524357 /* docs */ = {isa = PBXFileReference; lastKnownFileType = folder; name = docs; path = ../../../docs; sourceTree = "<group>"; };
+		F10BCA072F633B4300524357 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = README.md; path = ../../../README.md; sourceTree = "<group>"; };
+		F10BCA082F633B4300524357 /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = ../../../icons; sourceTree = "<group>"; };
+		F10BCA092F633B4300524357 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = ../../../manifest.json; sourceTree = "<group>"; };
+		F10BCA0A2F633B4300524357 /* content-script.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-script.js"; path = "../../../content-script.js"; sourceTree = "<group>"; };
+		F10BCA0B2F633B4300524357 /* inject.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = inject.js; path = ../../../inject.js; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		F10BC9C92F633B4300524357 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F10BC9E42F633B4300524357 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		F10BC9C32F633B4300524357 = {
+			isa = PBXGroup;
+			children = (
+				F10BC9CE2F633B4300524357 /* Netflix Safari Language Learner */,
+				F10BC9EB2F633B4300524357 /* Netflix Safari Language Learner Extension */,
+				F10BC9CD2F633B4300524357 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		F10BC9CD2F633B4300524357 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F10BC9CC2F633B4300524357 /* Netflix Safari Language Learner.app */,
+				F10BC9E72F633B4300524357 /* Netflix Safari Language Learner Extension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		F10BC9CE2F633B4300524357 /* Netflix Safari Language Learner */ = {
+			isa = PBXGroup;
+			children = (
+				F10BC9CF2F633B4300524357 /* AppDelegate.swift */,
+				F10BC9DB2F633B4300524357 /* ViewController.swift */,
+				F10BC9DD2F633B4300524357 /* Main.storyboard */,
+				F10BC9E02F633B4300524357 /* Assets.xcassets */,
+				F10BC9E22F633B4300524357 /* Info.plist */,
+				F10BC9D12F633B4300524357 /* Resources */,
+			);
+			path = "Netflix Safari Language Learner";
+			sourceTree = "<group>";
+		};
+		F10BC9D12F633B4300524357 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				F10BC9D22F633B4300524357 /* Main.html */,
+				F10BC9D52F633B4300524357 /* Icon.png */,
+				F10BC9D72F633B4300524357 /* Style.css */,
+				F10BC9D92F633B4300524357 /* Script.js */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		F10BC9EB2F633B4300524357 /* Netflix Safari Language Learner Extension */ = {
+			isa = PBXGroup;
+			children = (
+				F10BC9F82F633B4300524357 /* Resources */,
+				F10BC9EC2F633B4300524357 /* SafariWebExtensionHandler.swift */,
+				F10BC9EE2F633B4300524357 /* Info.plist */,
+			);
+			path = "Netflix Safari Language Learner Extension";
+			sourceTree = "<group>";
+		};
+		F10BC9F82F633B4300524357 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				F10BC9F92F633B4300524357 /* database.js */,
+				F10BC9FA2F633B4300524357 /* ui */,
+				F10BC9FB2F633B4300524357 /* options */,
+				F10BC9FC2F633B4300524357 /* popup.js */,
+				F10BC9FD2F633B4300524357 /* core */,
+				F10BC9FE2F633B4300524357 /* styles.css */,
+				F10BC9FF2F633B4300524357 /* background.js */,
+				F10BCA002F633B4300524357 /* popup.html */,
+				F10BCA012F633B4300524357 /* platform */,
+				F10BCA022F633B4300524357 /* tests */,
+				F10BCA032F633B4300524357 /* safari-xcode */,
+				F10BCA042F633B4300524357 /* PROJECT_SPEC.md */,
+				F10BCA052F633B4300524357 /* utils */,
+				F10BCA062F633B4300524357 /* docs */,
+				F10BCA072F633B4300524357 /* README.md */,
+				F10BCA082F633B4300524357 /* icons */,
+				F10BCA092F633B4300524357 /* manifest.json */,
+				F10BCA0A2F633B4300524357 /* content-script.js */,
+				F10BCA0B2F633B4300524357 /* inject.js */,
+			);
+			name = Resources;
+			path = "Netflix Safari Language Learner Extension";
+			sourceTree = SOURCE_ROOT;
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		F10BC9CB2F633B4300524357 /* Netflix Safari Language Learner */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F10BC9F52F633B4300524357 /* Build configuration list for PBXNativeTarget "Netflix Safari Language Learner" */;
+			buildPhases = (
+				F10BC9C82F633B4300524357 /* Sources */,
+				F10BC9C92F633B4300524357 /* Frameworks */,
+				F10BC9CA2F633B4300524357 /* Resources */,
+				F10BC9F42F633B4300524357 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F10BC9EA2F633B4300524357 /* PBXTargetDependency */,
+			);
+			name = "Netflix Safari Language Learner";
+			packageProductDependencies = (
+			);
+			productName = "Netflix Safari Language Learner";
+			productReference = F10BC9CC2F633B4300524357 /* Netflix Safari Language Learner.app */;
+			productType = "com.apple.product-type.application";
+		};
+		F10BC9E62F633B4300524357 /* Netflix Safari Language Learner Extension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F10BC9F12F633B4300524357 /* Build configuration list for PBXNativeTarget "Netflix Safari Language Learner Extension" */;
+			buildPhases = (
+				F10BC9E32F633B4300524357 /* Sources */,
+				F10BC9E42F633B4300524357 /* Frameworks */,
+				F10BC9E52F633B4300524357 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Netflix Safari Language Learner Extension";
+			packageProductDependencies = (
+			);
+			productName = "Netflix Safari Language Learner Extension";
+			productReference = F10BC9E72F633B4300524357 /* Netflix Safari Language Learner Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		F10BC9C42F633B4300524357 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2630;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					F10BC9CB2F633B4300524357 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					F10BC9E62F633B4300524357 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+				};
+			};
+			buildConfigurationList = F10BC9C72F633B4300524357 /* Build configuration list for PBXProject "Netflix Safari Language Learner" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = F10BC9C32F633B4300524357;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = F10BC9CD2F633B4300524357 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				F10BC9CB2F633B4300524357 /* Netflix Safari Language Learner */,
+				F10BC9E62F633B4300524357 /* Netflix Safari Language Learner Extension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		F10BC9CA2F633B4300524357 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F10BC9D62F633B4300524357 /* Icon.png in Resources */,
+				F10BC9DF2F633B4300524357 /* Main.storyboard in Resources */,
+				F10BC9DA2F633B4300524357 /* Script.js in Resources */,
+				F10BC9D42F633B4300524357 /* Main.html in Resources */,
+				F10BC9E12F633B4300524357 /* Assets.xcassets in Resources */,
+				F10BC9D82F633B4300524357 /* Style.css in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F10BC9E52F633B4300524357 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F10BCA102F633B4300524357 /* core in Resources */,
+				F10BCA1B2F633B4300524357 /* icons in Resources */,
+				F10BCA162F633B4300524357 /* safari-xcode in Resources */,
+				F10BCA132F633B4300524357 /* popup.html in Resources */,
+				F10BCA192F633B4300524357 /* docs in Resources */,
+				F10BCA1D2F633B4300524357 /* content-script.js in Resources */,
+				F10BCA172F633B4300524357 /* PROJECT_SPEC.md in Resources */,
+				F10BCA182F633B4300524357 /* utils in Resources */,
+				F10BCA0E2F633B4300524357 /* options in Resources */,
+				F10BCA122F633B4300524357 /* background.js in Resources */,
+				F10BCA0D2F633B4300524357 /* ui in Resources */,
+				F10BCA112F633B4300524357 /* styles.css in Resources */,
+				F10BCA142F633B4300524357 /* platform in Resources */,
+				F10BCA1E2F633B4300524357 /* inject.js in Resources */,
+				F10BCA0C2F633B4300524357 /* database.js in Resources */,
+				F10BCA1C2F633B4300524357 /* manifest.json in Resources */,
+				F10BCA1A2F633B4300524357 /* README.md in Resources */,
+				F10BCA152F633B4300524357 /* tests in Resources */,
+				F10BCA0F2F633B4300524357 /* popup.js in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F10BC9C82F633B4300524357 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F10BC9DC2F633B4300524357 /* ViewController.swift in Sources */,
+				F10BC9D02F633B4300524357 /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F10BC9E32F633B4300524357 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F10BC9ED2F633B4300524357 /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		F10BC9EA2F633B4300524357 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F10BC9E62F633B4300524357 /* Netflix Safari Language Learner Extension */;
+			targetProxy = F10BC9E92F633B4300524357 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		F10BC9D22F633B4300524357 /* Main.html */ = {
+			isa = PBXVariantGroup;
+			children = (
+				F10BC9D32F633B4300524357 /* Base */,
+			);
+			name = Main.html;
+			sourceTree = "<group>";
+		};
+		F10BC9DD2F633B4300524357 /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				F10BC9DE2F633B4300524357 /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		F10BC9EF2F633B4300524357 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		F10BC9F02F633B4300524357 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		F10BC9F22F633B4300524357 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 83BGA99Z2M;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Netflix Safari Language Learner Extension/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Netflix Safari Language Learner Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.powerpig99.netflix-safari-language-learner.Extension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		F10BC9F32F633B4300524357 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 83BGA99Z2M;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Netflix Safari Language Learner Extension/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Netflix Safari Language Learner Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.powerpig99.netflix-safari-language-learner.Extension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		F10BC9F62F633B4300524357 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 83BGA99Z2M;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Netflix Safari Language Learner/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Netflix Safari Language Learner";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.powerpig99.netflix-safari-language-learner";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		F10BC9F72F633B4300524357 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 83BGA99Z2M;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Netflix Safari Language Learner/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Netflix Safari Language Learner";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.powerpig99.netflix-safari-language-learner";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		F10BC9C72F633B4300524357 /* Build configuration list for PBXProject "Netflix Safari Language Learner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F10BC9EF2F633B4300524357 /* Debug */,
+				F10BC9F02F633B4300524357 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F10BC9F12F633B4300524357 /* Build configuration list for PBXNativeTarget "Netflix Safari Language Learner Extension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F10BC9F22F633B4300524357 /* Debug */,
+				F10BC9F32F633B4300524357 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F10BC9F52F633B4300524357 /* Build configuration list for PBXNativeTarget "Netflix Safari Language Learner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F10BC9F62F633B4300524357 /* Debug */,
+				F10BC9F72F633B4300524357 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = F10BC9C42F633B4300524357 /* Project object */;
+}

@@ -185,6 +185,21 @@
     return count;
   }
 
+  async function deleteSubtitleTranslation(database, title, sourceLanguage, targetLanguage, originalText) {
+    const transaction = database.transaction([SUBTITLE_STORE], 'readwrite');
+    const store = transaction.objectStore(SUBTITLE_STORE);
+
+    store.delete([
+      languageUtils.normalizeCueText(title),
+      languageUtils.normalizeLanguageCode(sourceLanguage),
+      String(targetLanguage || '').toUpperCase(),
+      languageUtils.normalizeCueText(originalText)
+    ]);
+
+    await waitForTransaction(transaction);
+    return 1;
+  }
+
   async function getWordTranslation(database, word, sourceLanguage, targetLanguage) {
     const transaction = database.transaction([WORD_STORE], 'readonly');
     const store = transaction.objectStore(WORD_STORE);
@@ -334,6 +349,11 @@
       async clearSubtitleTranslations(title) {
         return withDatabase((database) => {
           return clearSubtitleTranslations(database, title);
+        }, 0);
+      },
+      async deleteSubtitleTranslation(title, sourceLanguage, targetLanguage, originalText) {
+        return withDatabase((database) => {
+          return deleteSubtitleTranslation(database, title, sourceLanguage, targetLanguage, originalText);
         }, 0);
       },
       async countSubtitleTranslations() {

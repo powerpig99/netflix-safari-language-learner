@@ -37,7 +37,7 @@
 
     const speedSelect = document.createElement('select');
     speedSelect.className = 'nll-control-speed';
-    [0.75, 1, 1.25, 1.5, 1.75, 2].forEach((speed) => {
+    [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].forEach((speed) => {
       const option = document.createElement('option');
       option.value = String(speed);
       option.textContent = `${speed}x`;

@@ -3,9 +3,19 @@
   const core = app.core = app.core || {};
   const extensionApi = app.extensionApi;
 
-  function createControlActions({ adapter, subtitleStore, settingsStore, autoPauseController }) {
+  function logControls(stage, detail) {
+    if (extensionApi && extensionApi.debugLog) {
+      extensionApi.debugLog.record('controls', stage, detail);
+    }
+  }
+
+  function createControlActions({ adapter, subtitleStore, settingsStore, translationQueue }) {
+    function clampPlaybackSpeed(speed) {
+      return Math.max(0.5, Math.min(2, Math.round(Number(speed) * 100) / 100));
+    }
+
     function getVideo() {
-      return adapter.getVideo() || document.querySelector('video');
+      return adapter.getVideo();
     }
 
     function getCurrentTime() {
@@ -51,31 +61,26 @@
         return false;
       }
 
-      const wasPaused = video.paused;
+      logControls('navigation:seek-target', {
+        targetStartTime: target.startTime,
+        targetEndTime: target.endTime,
+        currentTime: getCurrentTime()
+      });
 
-      if (typeof adapter.seekToTime === 'function' && adapter.seekToTime(target.startTime, { preservePaused: wasPaused })) {
-        if (wasPaused) {
-          autoPauseController.clear();
-        } else {
-          autoPauseController.schedule();
-        }
+      if (typeof adapter.seekAndPlay === 'function' && adapter.seekAndPlay(target.startTime)) {
+        logControls('navigation:seek-issued', {
+          targetStartTime: target.startTime,
+          playResult: true,
+          mode: 'seek-and-play'
+        });
         return true;
       }
 
-      video.currentTime = target.startTime;
-      if (!wasPaused && video.paused) {
-        video.play().catch(() => {});
-      }
-      if (wasPaused) {
-        autoPauseController.clear();
-      } else {
-        autoPauseController.schedule();
-      }
-      return true;
+      return false;
     }
 
     async function setPlaybackSpeed(speed) {
-      const safeSpeed = Number(speed);
+      const safeSpeed = clampPlaybackSpeed(speed);
       if (!Number.isFinite(safeSpeed)) {
         return;
       }
@@ -86,6 +91,11 @@
       }
 
       await settingsStore.update({ playbackSpeed: safeSpeed });
+    }
+
+    async function changePlaybackSpeed(delta) {
+      const currentSpeed = Number(settingsStore.get().playbackSpeed || 1);
+      return setPlaybackSpeed(currentSpeed + Number(delta || 0));
     }
 
     return {
@@ -105,17 +115,20 @@
       async setPlaybackSpeed(speed) {
         return setPlaybackSpeed(speed);
       },
+      async changePlaybackSpeed(delta) {
+        return changePlaybackSpeed(delta);
+      },
       togglePlayPause() {
         const video = getVideo();
         if (!video) {
           return false;
         }
-        if (video.paused) {
-          video.play().catch(() => {});
-          return true;
-        }
-        video.pause();
-        return false;
+        const result = Boolean(typeof adapter.togglePlayback === 'function' && adapter.togglePlayback());
+        logControls('playback:toggle', {
+          currentTime: getCurrentTime(),
+          result
+        });
+        return result;
       },
       previousSubtitle() {
         const video = getVideo();
@@ -156,6 +169,21 @@
         }
         return seekToTarget(targets[currentIndex]);
       },
+      retrySubtitleTranslation() {
+        const activeCue = subtitleStore.getState().activeSubtitle.cue;
+        const sourceLanguage = subtitleStore.getState().sourceLanguage;
+        const title = subtitleStore.getState().title;
+        if (!translationQueue || !activeCue) {
+          return false;
+        }
+
+        translationQueue.retry({
+          title,
+          cue: activeCue,
+          sourceLanguage
+        }).catch(() => {});
+        return true;
+      },
       applyCurrentPlaybackSpeed() {
         const settings = settingsStore.get();
         const video = getVideo();
@@ -163,8 +191,26 @@
           video.playbackRate = settings.playbackSpeed;
         }
       },
-      openSettings() {
-        extensionApi.runtime.openOptionsPage().catch(() => {});
+      async openSettings() {
+        try {
+          const response = await extensionApi.runtime.sendMessage({ action: 'openOptionsPage' });
+          if (response && response.success) {
+            return true;
+          }
+        } catch (_error) {}
+
+        try {
+          await extensionApi.runtime.openOptionsPage();
+          return true;
+        } catch (_error) {}
+
+        const optionsUrl = extensionApi.runtime.getURL('options/index.html');
+        if (optionsUrl && typeof globalThis.open === 'function') {
+          globalThis.open(optionsUrl, '_blank', 'noopener');
+          return true;
+        }
+
+        return false;
       }
     };
   }

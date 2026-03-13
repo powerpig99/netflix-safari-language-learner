@@ -50,6 +50,13 @@
           <label for="target-language">Target language</label>
           <select id="target-language"></select>
         </div>
+        <label class="toggle-row">
+          <span>
+            <strong>Use Netflix subtitles if available</strong>
+            <small>Use a matching Netflix target-language subtitle track for the second line before machine translation</small>
+          </span>
+          <input id="use-netflix-target-subtitles-if-available" type="checkbox">
+        </label>
         <div class="field">
           <label for="translation-provider">Provider</label>
           <select id="translation-provider"></select>
@@ -76,6 +83,7 @@
         <div class="field">
           <label for="playback-speed">Default playback speed</label>
           <select id="playback-speed">
+            <option value="0.5">0.5x</option>
             <option value="0.75">0.75x</option>
             <option value="1">1x</option>
             <option value="1.25">1.25x</option>

@@ -8,7 +8,9 @@
   const ROUTE_POLL_MS = 500;
 
   let bootstrapped = false;
-  let lastPathname = globalThis.location.pathname;
+  let lastPathname = null;
+  let lastWatchPageState = null;
+  let runtimeController = null;
 
   function isWatchPage() {
     return WATCH_PATH_PATTERN.test(globalThis.location.pathname);
@@ -45,16 +47,11 @@
       translationQueue,
       wordController
     });
-    const autoPauseController = app.core.createAutoPauseController({
-      adapter,
-      settingsStore,
-      subtitleStore
-    });
     const controlActions = app.core.createControlActions({
       adapter,
       subtitleStore,
       settingsStore,
-      autoPauseController
+      translationQueue
     });
     const controlIntegration = app.ui.createControlIntegration({
       adapter,
@@ -341,6 +338,29 @@
     function saveTranslationLog() {
       const payload = JSON.stringify(getTranslationLogPayload(), null, 2);
       const filename = 'netflix-language-learner-translation-log.json';
+      const blob = new Blob([payload], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = filename;
+      document.documentElement.appendChild(link);
+      link.click();
+      link.remove();
+
+      globalThis.setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
+
+      return {
+        filename,
+        entryCount: getTranslationLogPayload().entries.length
+      };
+    }
+
+    function saveControlLog() {
+      const payload = JSON.stringify(getTranslationLogPayload(), null, 2);
+      const filename = 'netflix-language-learner-control-log.json';
       const blob = new Blob([payload], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -1012,7 +1032,15 @@
       href: globalThis.location.href
     });
 
-    const rollingVisibilityRecorder = createRollingVisibilityRecorder();
+    let rollingVisibilityRecorder = null;
+
+    function getRollingVisibilityRecorder() {
+      if (!rollingVisibilityRecorder) {
+        rollingVisibilityRecorder = createRollingVisibilityRecorder();
+      }
+
+      return rollingVisibilityRecorder;
+    }
 
     globalThis.__NLL_DEBUG__ = {
       adapter,
@@ -1024,6 +1052,7 @@
         return getTranslationLogPayload();
       },
       saveTranslationLog,
+      saveControlLog,
       getVisibleControlsLog() {
         return getVisibleControlsSnapshot();
       },
@@ -1031,7 +1060,7 @@
       saveVisibilityTrace,
       savePlaybackTransitionTrace,
       saveRecentVisibilityTrace(windowMs = 5000) {
-        return rollingVisibilityRecorder.saveRecent(windowMs);
+        return getRollingVisibilityRecorder().saveRecent(windowMs);
       }
     };
 
@@ -1054,11 +1083,16 @@
     }
 
     function syncFromAdapter(targetLanguage) {
+      subtitleStore.setPlayerReady(adapter.isWatchPlaybackActive());
       subtitleStore.setTitle(adapter.getTitle(), targetLanguage);
       subtitleStore.setSourceLanguage(adapter.getSourceLanguage());
       subtitleStore.setTimeline(adapter.getTimeline());
+      subtitleStore.setPreferredTranslation(
+        typeof adapter.getPreferredTranslation === 'function'
+          ? adapter.getPreferredTranslation()
+          : null
+      );
       subtitleStore.setFeatureAvailability(adapter.getFeatureAvailability());
-      autoPauseController.attachVideo(adapter.getVideo());
       overlayController.syncMount();
       controlIntegration.syncMount();
       applyPlaybackSpeed();
@@ -1068,11 +1102,26 @@
     function syncNativeSubtitleVisibility() {
       const settings = settingsStore.get();
       const availability = subtitleStore.getState().featureAvailability || {};
-      const shouldShowNativeSubtitles = !(settings.extensionEnabled && availability.dualSubs);
+      const shouldShowNativeSubtitles = !adapter.getVideo()
+        || !(settings.extensionEnabled && availability.dualSubs);
 
       if (typeof adapter.setNativeSubtitleVisibility === 'function') {
         adapter.setNativeSubtitleVisibility(shouldShowNativeSubtitles);
       }
+    }
+
+    function syncSubtitlePreferences() {
+      if (typeof adapter.setSubtitlePreferences !== 'function') {
+        return;
+      }
+
+      const settings = settingsStore.get();
+      adapter.setSubtitlePreferences({
+        extensionEnabled: settings.extensionEnabled,
+        autoPauseEnabled: settings.autoPauseEnabled,
+        targetLanguage: settings.targetLanguage,
+        useNetflixTargetSubtitlesIfAvailable: settings.useNetflixTargetSubtitlesIfAvailable
+      });
     }
 
     adapter.subscribe((event) => {
@@ -1081,7 +1130,6 @@
 
       switch (event.type) {
         case 'playerReady':
-          subtitleStore.setPlayerReady(true);
           syncFromAdapter(settings.targetLanguage);
           break;
         case 'captionsChanged':
@@ -1093,13 +1141,20 @@
         break;
       case 'activeSubtitleChanged':
         subtitleStore.setActiveCue(event.cue, settings.targetLanguage);
-        if (event.cue) {
+        if (event.cue && !(
+          settings.useNetflixTargetSubtitlesIfAvailable
+          && typeof adapter.getPreferredTranslation === 'function'
+          && adapter.getPreferredTranslation().available
+        )) {
           translationQueue.prefetch({
             title: subtitleStore.getState().title,
             cues: getCuePrefetchWindow(event.cue, subtitleStore.getState().timeline),
             sourceLanguage: subtitleStore.getState().sourceLanguage
           });
         }
+        break;
+      case 'preferredTranslationChanged':
+        subtitleStore.setPreferredTranslation(event.translation);
         break;
       case 'titleChanged':
         subtitleStore.setTitle(event.title, settings.targetLanguage);
@@ -1123,6 +1178,7 @@
       subtitleStore.refreshActiveTranslationKey(settings.targetLanguage);
       applyPlaybackSpeed();
       syncNativeSubtitleVisibility();
+      syncSubtitlePreferences();
       if (!settings.extensionEnabled) {
         wordController.hideTooltip();
       }
@@ -1136,6 +1192,7 @@
       logRuntime('adapter:init-complete', {
         hasVideo: Boolean(adapter.getVideo())
       });
+      syncSubtitlePreferences();
       syncFromAdapter(settingsStore.get().targetLanguage);
       databaseClient.open().then(() => {
         logRuntime('database:open-success', {});
@@ -1150,16 +1207,37 @@
       });
       subtitleStore.setPlatformError(error.message || String(error));
     });
+
+    runtimeController = {
+      setWatchRouteActive(isActive) {
+        logRuntime('route:watch-state', {
+          active: Boolean(isActive),
+          pathname: globalThis.location.pathname
+        });
+        if (typeof adapter.setWatchRouteActive === 'function') {
+          adapter.setWatchRouteActive(isActive);
+        }
+        syncFromAdapter(settingsStore.get().targetLanguage);
+        if (!isActive) {
+          wordController.hideTooltip();
+        }
+      }
+    };
   }
 
   function checkRoute() {
     const currentPathname = globalThis.location.pathname;
-    if (currentPathname === lastPathname && !isWatchPage()) {
+    const currentWatchPageState = isWatchPage();
+    if (currentPathname === lastPathname && currentWatchPageState === lastWatchPageState) {
       return;
     }
 
     lastPathname = currentPathname;
+    lastWatchPageState = currentWatchPageState;
     bootstrapWatchRuntime();
+    if (runtimeController) {
+      runtimeController.setWatchRouteActive(currentWatchPageState);
+    }
   }
 
   checkRoute();

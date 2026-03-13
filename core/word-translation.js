@@ -9,6 +9,40 @@
     let activeTooltip = null;
     let activeAnchor = null;
 
+    function signalCursorActivity(source = 'word-tooltip') {
+      globalThis.dispatchEvent(new CustomEvent('nll:cursor-activity', {
+        detail: { source }
+      }));
+    }
+
+    function restorePlaybackFocus() {
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLElement) {
+        activeElement.blur();
+      }
+
+      const focusTarget = document.querySelector(
+        '[data-uia="watch-video"], [data-uia="player"], .watch-video, .NFPlayer, video'
+      );
+
+      if (!(focusTarget instanceof HTMLElement)) {
+        return;
+      }
+
+      const removeTabIndex = !focusTarget.hasAttribute('tabindex');
+      if (removeTabIndex) {
+        focusTarget.setAttribute('tabindex', '-1');
+      }
+
+      focusTarget.focus({ preventScroll: true });
+
+      if (removeTabIndex) {
+        globalThis.setTimeout(() => {
+          focusTarget.removeAttribute('tabindex');
+        }, 0);
+      }
+    }
+
     function hideTooltip() {
       if (activeTooltip) {
         activeTooltip.remove();
@@ -18,6 +52,7 @@
         activeAnchor.classList.remove('nll-word--active');
         activeAnchor = null;
       }
+      restorePlaybackFocus();
     }
 
     async function resolveWordTranslation(word, context, sourceLanguage) {
@@ -104,12 +139,40 @@
       link.textContent = 'Open in Wiktionary';
 
       tooltip.append(wordLabel, translationLabel, sourceLabel, link);
-      document.body.appendChild(tooltip);
+      domUtils.getFullscreenRoot().appendChild(tooltip);
       domUtils.positionFloatingElement(anchor, tooltip);
 
       activeTooltip = tooltip;
       activeAnchor = anchor;
       activeAnchor.classList.add('nll-word--active');
+
+      const stopTooltipEvent = (event) => {
+        event.stopPropagation();
+      };
+      const stopTooltipPointerEvent = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      };
+
+      tooltip.addEventListener('pointerdown', stopTooltipPointerEvent, true);
+      tooltip.addEventListener('mousedown', stopTooltipPointerEvent, true);
+      tooltip.addEventListener('mouseup', stopTooltipEvent, true);
+      tooltip.addEventListener('click', stopTooltipEvent, true);
+      tooltip.addEventListener('mouseenter', () => {
+        signalCursorActivity();
+      });
+      tooltip.addEventListener('mousemove', () => {
+        signalCursorActivity();
+      }, { passive: true });
+      link.addEventListener('pointerdown', stopTooltipPointerEvent, true);
+      link.addEventListener('mousedown', stopTooltipPointerEvent, true);
+      link.addEventListener('click', (event) => {
+        event.stopPropagation();
+        globalThis.setTimeout(() => {
+          hideTooltip();
+        }, 0);
+      }, true);
+      restorePlaybackFocus();
 
       try {
         const result = await resolveWordTranslation(word, buildContextText(context), sourceLanguage);
@@ -154,6 +217,12 @@
         wordButton.type = 'button';
         wordButton.className = 'nll-word';
         wordButton.textContent = token.value;
+        wordButton.addEventListener('pointerdown', (event) => {
+          event.preventDefault();
+        });
+        wordButton.addEventListener('mousedown', (event) => {
+          event.preventDefault();
+        });
         wordButton.addEventListener('click', (event) => {
           event.preventDefault();
           event.stopPropagation();

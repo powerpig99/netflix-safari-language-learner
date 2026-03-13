@@ -214,8 +214,16 @@
     }
 
     function ensureRoot() {
-      const nextMountTarget = adapter.getMountTarget() || adapter.getSubtitleContainer() || document.body;
+      const video = adapter.getVideo();
+      const nextMountTarget = video
+        ? (adapter.getMountTarget() || adapter.getSubtitleContainer() || document.body)
+        : null;
       if (!nextMountTarget) {
+        mountTarget = null;
+        if (root) {
+          root.remove();
+          root = null;
+        }
         return null;
       }
 
@@ -262,6 +270,7 @@
       const settings = settingsStore.get();
       const state = subtitleStore.getState();
       if (!ensureRoot()) {
+        wordController.hideTooltip();
         return;
       }
 
@@ -293,11 +302,20 @@
       }
 
       const shouldShowTranslation = settings.dualSubEnabled && settingsStore.shouldTranslate(state.sourceLanguage);
+      const shouldUseNetflixTargetSubtitles = Boolean(
+        settings.useNetflixTargetSubtitlesIfAvailable
+        && state.preferredTranslation.available
+      );
+      const netflixTargetCue = shouldUseNetflixTargetSubtitles
+        ? state.preferredTranslation.cue
+        : null;
       const translationEntry = state.activeSubtitle.translationKey
         ? translationQueue.getEntry(state.activeSubtitle.translationKey)
         : null;
       const renderSignature = JSON.stringify([
         shouldShowTranslation,
+        shouldUseNetflixTargetSubtitles,
+        netflixTargetCue?.text || null,
         state.activeSubtitle.translationKey,
         translationEntry?.status || null,
         translationEntry?.text || null,
@@ -309,6 +327,8 @@
         traceTranslation('overlay:render', {
           translationKey: state.activeSubtitle.translationKey,
           shouldShowTranslation,
+          shouldUseNetflixTargetSubtitles,
+          netflixTargetText: netflixTargetCue?.text || null,
           entryStatus: translationEntry?.status || null,
           entryText: translationEntry?.text || null,
           entryError: translationEntry?.error || null
@@ -319,7 +339,14 @@
       translatedLine.textContent = '';
 
       if (shouldShowTranslation) {
-        if (!translationEntry || translationEntry.status === 'pending') {
+        if (netflixTargetCue && netflixTargetCue.text) {
+          translatedLine.textContent = netflixTargetCue.text;
+          translatedLine.dataset.state = 'netflix';
+        } else if (shouldUseNetflixTargetSubtitles) {
+          translatedLine.hidden = false;
+          translatedLine.textContent = '\u00a0';
+          translatedLine.dataset.state = 'netflix-unavailable';
+        } else if (!translationEntry || translationEntry.status === 'pending') {
           translatedLine.textContent = 'Translating...';
           translatedLine.dataset.state = 'loading';
         } else if (translationEntry.status === 'error') {

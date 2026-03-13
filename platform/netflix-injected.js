@@ -10,6 +10,7 @@
   const PROBE_POLL_INTERVAL_MS = 1500;
   const SUBTITLE_POLL_INTERVAL_MS = 180;
   const SUBTITLE_FETCH_RETRY_MS = 15000;
+  const AUTO_PAUSE_LEAD_MS = 200;
   const NETFLIX_PLAYER_TIME_SCALE = 1000;
   const SUBTITLE_PROFILE = 'webvtt-lssdh-ios8';
   const SUBTITLE_PROFILE_PREFERENCES = [
@@ -70,6 +71,29 @@
   let lastTimelineKeySent = null;
   let refreshInFlight = false;
   let queuedRefreshReason = null;
+  let boundMediaElement = null;
+  let activeTimelineResolution = createTimelineResolutionState();
+  let preferredTimelineResolution = createTimelineResolutionState();
+  const subtitlePreferences = {
+    extensionEnabled: false,
+    autoPauseEnabled: false,
+    targetLanguage: '',
+    useNetflixTargetSubtitlesIfAvailable: false
+  };
+  const autoPauseState = {
+    rafId: null,
+    active: false,
+    awaitingSeeked: false,
+    seekGeneration: 0,
+    pendingSeekTargetTime: null,
+    pendingPlayAfterSeek: false,
+    currentCueKey: null,
+    currentCueStartTime: null,
+    currentCueEndTime: null,
+    currentCueTriggerTime: null,
+    previousTime: null,
+    lastFrameCheckLogAt: 0
+  };
 
   function post(type, payload = {}) {
     globalThis.postMessage({
@@ -78,6 +102,13 @@
       type,
       payload
     }, '*');
+  }
+
+  function postDebug(stage, detail = {}) {
+    post('nll:player-debug', {
+      stage,
+      detail
+    });
   }
 
   function safeCall(fn) {
@@ -126,6 +157,102 @@
     return String(text || '')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  function getCueKey(cue) {
+    if (!cue) {
+      return null;
+    }
+
+    return [
+      Number(cue.startTime),
+      Number(cue.endTime),
+      String(cue.text || '')
+    ].join('|');
+  }
+
+  function clearAutoPauseTimer(reason = null, { deactivate = true } = {}) {
+    if (autoPauseState.rafId !== null) {
+      globalThis.cancelAnimationFrame(autoPauseState.rafId);
+      autoPauseState.rafId = null;
+    }
+
+    if (deactivate) {
+      autoPauseState.active = false;
+      autoPauseState.awaitingSeeked = false;
+    }
+
+    if (reason) {
+      postDebug('page-autopause:clear', {
+        reason,
+        deactivate
+      });
+    }
+  }
+
+  function scheduleAutoPauseFrame(reason = null) {
+    if (!autoPauseState.active || autoPauseState.rafId !== null) {
+      return;
+    }
+
+    if (reason) {
+      postDebug('page-autopause:schedule-frame', { reason });
+    }
+
+    autoPauseState.rafId = globalThis.requestAnimationFrame(runAutoPauseFrame);
+  }
+
+  function resetAutoPauseTraversal(reason = null) {
+    autoPauseState.currentCueKey = null;
+    autoPauseState.currentCueStartTime = null;
+    autoPauseState.currentCueEndTime = null;
+    autoPauseState.currentCueTriggerTime = null;
+    autoPauseState.previousTime = null;
+
+    if (reason) {
+      postDebug('page-autopause:reset', { reason });
+    }
+  }
+
+  function setAutoPauseTraversal(cue, currentTime, reason = null) {
+    autoPauseState.currentCueKey = cue ? getCueKey(cue) : null;
+    autoPauseState.currentCueStartTime = cue ? Number(cue.startTime) : null;
+    autoPauseState.currentCueEndTime = cue ? Number(cue.endTime) : null;
+    autoPauseState.currentCueTriggerTime = cue ? (Number(cue.endTime) - (AUTO_PAUSE_LEAD_MS / 1000)) : null;
+    autoPauseState.previousTime = Number.isFinite(Number(currentTime))
+      ? Number(currentTime)
+      : null;
+
+    postDebug('page-autopause:set-traversal', {
+      reason,
+      currentTime: autoPauseState.previousTime,
+      cueStartTime: autoPauseState.currentCueStartTime,
+      cueEndTime: autoPauseState.currentCueEndTime,
+      triggerTime: autoPauseState.currentCueTriggerTime,
+      cueKey: autoPauseState.currentCueKey
+    });
+  }
+
+  function normalizeLanguageCode(languageCode) {
+    const normalized = String(languageCode || '').trim().toLowerCase();
+    if (!normalized) {
+      return '';
+    }
+
+    const withoutRegion = normalized.split(/[-_]/)[0];
+    return withoutRegion === 'nb' ? 'no' : withoutRegion;
+  }
+
+  function createTimelineResolutionState() {
+    return {
+      selection: null,
+      result: null
+    };
+  }
+
+  function clearTimelineResolutionState(resolutionState) {
+    resolutionState.selection = null;
+    resolutionState.result = null;
   }
 
   function decodeHtmlEntities(text) {
@@ -740,10 +867,27 @@
       ? safeCall(() => context.sessionPlayer.getPlaybackRate())
       : null;
     const playbackRate = unwrapResult(playbackRateResult);
+    const pausedResult = typeof context.sessionPlayer?.getPaused === 'function'
+      ? safeCall(() => context.sessionPlayer.getPaused())
+      : null;
+    const paused = unwrapResult(pausedResult);
+    const playingResult = typeof context.sessionPlayer?.getPlaying === 'function'
+      ? safeCall(() => context.sessionPlayer.getPlaying())
+      : null;
+    const playing = unwrapResult(playingResult);
     const elementResult = typeof context.sessionPlayer?.getElement === 'function'
       ? safeCall(() => context.sessionPlayer.getElement())
       : null;
     const element = unwrapResult(elementResult);
+    const mediaElementPaused = element.value && typeof element.value.paused === 'boolean'
+      ? element.value.paused
+      : null;
+    const normalizedPaused = typeof paused.value === 'boolean'
+      ? paused.value
+      : mediaElementPaused;
+    const normalizedPlaying = typeof playing.value === 'boolean'
+      ? playing.value
+      : (typeof mediaElementPaused === 'boolean' ? !mediaElementPaused : null);
 
     const normalizedTimedTextTrackList = normalizeTrackList(timedTextTrackList.value);
     const normalizedActiveTimedTextTrack = normalizeTrack(activeTimedTextTrack.value);
@@ -781,6 +925,10 @@
       currentTime: normalizePlayerTime(currentTime.value),
       playbackRateError: playbackRate.error,
       playbackRate: typeof playbackRate.value === 'number' ? playbackRate.value : null,
+      pausedError: paused.error,
+      paused: typeof normalizedPaused === 'boolean' ? normalizedPaused : null,
+      playingError: playing.error,
+      playing: typeof normalizedPlaying === 'boolean' ? normalizedPlaying : null,
       elementError: element.error,
       element: normalizeElement(element.value),
       hasManifestLikeTimedTextData: normalizedTimedTextTrackList.hasManifestLikeData || Boolean(normalizedActiveTimedTextTrack?.hasManifestLikeData)
@@ -1129,6 +1277,31 @@
     }) || null;
   }
 
+  function findManifestTrackByLanguage(manifest, targetLanguage, excludedTrackKey = null) {
+    if (!manifest) {
+      return null;
+    }
+
+    const normalizedTargetLanguage = normalizeLanguageCode(targetLanguage);
+    if (!normalizedTargetLanguage) {
+      return null;
+    }
+
+    const tracks = Array.isArray(manifest.timedtexttracks) ? manifest.timedtexttracks : [];
+    return tracks.find((track) => {
+      if (!track || track.isForcedNarrative || track.isNoneTrack) {
+        return false;
+      }
+
+      if (excludedTrackKey && getTrackKey(track) === excludedTrackKey) {
+        return false;
+      }
+
+      return normalizeLanguageCode(track.language) === normalizedTargetLanguage
+        || normalizeLanguageCode(track.bcp47) === normalizedTargetLanguage;
+    }) || null;
+  }
+
   function resolveSubtitleDownload(track) {
     if (!track || typeof track !== 'object') {
       return {
@@ -1233,6 +1406,66 @@
 
     pendingSubtitleLoads.set(cacheKey, pending);
     return pending;
+  }
+
+  // Timeline resolution is selection-based: once a movie/track/downloadable choice is fixed,
+  // refreshes should reuse that resolved timeline and only do active-cue lookup.
+  function buildTimelineSelection(movieId, track, downloadable) {
+    if (!movieId || !track) {
+      return null;
+    }
+
+    const trackKey = getTrackKey(track) || 'unknown-track';
+    const downloadableKey = downloadable
+      ? downloadable.downloadableId || downloadable.url || downloadable.profile || 'unresolved-downloadable'
+      : 'unresolved-downloadable';
+
+    return {
+      key: [
+        String(movieId),
+        trackKey,
+        downloadableKey
+      ].join('|'),
+      movieId: String(movieId),
+      trackKey,
+      downloadableKey,
+      profile: downloadable?.profile || null
+    };
+  }
+
+  function shouldRefreshResolvedTimeline(resolutionState, selection) {
+    if (!selection) {
+      return false;
+    }
+
+    return !resolutionState.selection
+      || resolutionState.selection.key !== selection.key
+      || !resolutionState.result
+      || Boolean(
+        resolutionState.result.error
+        && resolutionState.result.retryAfter
+        && Date.now() >= resolutionState.result.retryAfter
+      );
+  }
+
+  async function resolveTrackTimeline(resolutionState, selection, movieId, track, downloadable) {
+    if (!selection) {
+      clearTimelineResolutionState(resolutionState);
+      return null;
+    }
+
+    if (!downloadable?.url) {
+      resolutionState.selection = selection;
+      resolutionState.result = null;
+      return null;
+    }
+
+    if (shouldRefreshResolvedTimeline(resolutionState, selection)) {
+      resolutionState.selection = selection;
+      resolutionState.result = await fetchSubtitleTimeline(movieId, track, downloadable);
+    }
+
+    return resolutionState.result;
   }
 
   function findCueAtTime(timeline, currentTime) {
@@ -1414,7 +1647,8 @@
       ready: debugState.ready ? { ...debugState.ready } : null,
       probe: debugState.probe ? cloneJson(debugState.probe) : null,
       status: debugState.status ? { ...debugState.status } : null,
-      requestHydration: debugState.requestHydration ? { ...debugState.requestHydration } : null
+      requestHydration: debugState.requestHydration ? { ...debugState.requestHydration } : null,
+      preferences: cloneJson(subtitlePreferences)
     };
   }
 
@@ -1432,6 +1666,9 @@
       subtitleState.captionsEnabled,
       subtitleState.sourceLanguage,
       subtitleState.activeCue,
+      subtitleState.preferredTranslation?.available || false,
+      subtitleState.preferredTranslation?.activeCue || null,
+      subtitleState.preferredTranslation?.readyState || null,
       subtitleState.ready?.state
     ]);
 
@@ -1456,6 +1693,7 @@
 
   async function performRefresh(reason) {
     const context = getSessionContext();
+    syncMediaElementBindings(context);
     const probe = buildProbe(context);
     const movieId = resolveMovieId(context.sessionPlayer) || (probe.movieId != null ? String(probe.movieId) : null);
     const manifest = movieId ? (manifestCache.get(movieId) || null) : null;
@@ -1471,9 +1709,19 @@
     let activeCue = null;
     let timelineKey = null;
     let captionsEnabled = false;
+    let preferredTranslation = {
+      available: false,
+      activeCue: null,
+      trackLanguage: null,
+      targetLanguage: subtitlePreferences.targetLanguage || null,
+      provider: subtitlePreferences.useNetflixTargetSubtitlesIfAvailable ? 'netflix' : null,
+      readyState: subtitlePreferences.useNetflixTargetSubtitlesIfAvailable ? 'waiting-for-track' : 'disabled'
+    };
     let ready = {
       state: 'idle'
     };
+    let activeTimelineSelection = null;
+    let preferredTimelineSelection = null;
 
     if (manifest && activeTimedTextTrack && !activeTimedTextTrack.isNoneTrack) {
       const matchedTimedTextTrack = findManifestTrack(manifest, activeTimedTextTrack);
@@ -1482,6 +1730,7 @@
       if (matchedTimedTextTrack) {
         sourceLanguage = matchedTimedTextTrack.language || sourceLanguage;
         const downloadable = resolveSubtitleDownload(matchedTimedTextTrack);
+        activeTimelineSelection = buildTimelineSelection(movieId, matchedTimedTextTrack, downloadable);
         selection.downloadable = {
           profile: downloadable.profile,
           downloadableId: downloadable.downloadableId,
@@ -1489,13 +1738,20 @@
           urlCount: downloadable.urlCount,
           availableProfiles: downloadable.availableProfiles
         };
+        selection.activeTimelineSelection = activeTimelineSelection ? { ...activeTimelineSelection } : null;
 
         if (!downloadable.url) {
           ready = {
             state: 'waiting-for-downloadable'
           };
         } else {
-          const timelineResult = await fetchSubtitleTimeline(movieId, matchedTimedTextTrack, downloadable);
+          const timelineResult = await resolveTrackTimeline(
+            activeTimelineResolution,
+            activeTimelineSelection,
+            movieId,
+            matchedTimedTextTrack,
+            downloadable
+          );
           if (timelineResult.error) {
             ready = {
               state: 'fetch-error',
@@ -1526,6 +1782,65 @@
       }
     }
 
+    if (!activeTimelineSelection) {
+      clearTimelineResolutionState(activeTimelineResolution);
+      selection.activeTimelineSelection = null;
+    }
+
+    if (subtitlePreferences.useNetflixTargetSubtitlesIfAvailable && manifest) {
+      const excludedTrackKey = selection.matchedTimedTextTrack
+        ? getTrackKey(selection.matchedTimedTextTrack)
+        : null;
+      const preferredTimedTextTrack = findManifestTrackByLanguage(
+        manifest,
+        subtitlePreferences.targetLanguage,
+        excludedTrackKey
+      );
+      selection.preferredTimedTextTrack = normalizeTrack(preferredTimedTextTrack);
+
+      if (preferredTimedTextTrack) {
+        preferredTranslation.trackLanguage = preferredTimedTextTrack.language || preferredTimedTextTrack.bcp47 || null;
+        preferredTranslation.readyState = 'waiting-for-downloadable';
+        const downloadable = resolveSubtitleDownload(preferredTimedTextTrack);
+        preferredTimelineSelection = buildTimelineSelection(movieId, preferredTimedTextTrack, downloadable);
+        selection.preferredDownloadable = {
+          profile: downloadable.profile,
+          downloadableId: downloadable.downloadableId,
+          hydrated: downloadable.hydrated,
+          urlCount: downloadable.urlCount,
+          availableProfiles: downloadable.availableProfiles
+        };
+        selection.preferredTimelineSelection = preferredTimelineSelection ? { ...preferredTimelineSelection } : null;
+
+        if (downloadable.url) {
+          const preferredTimelineResult = await resolveTrackTimeline(
+            preferredTimelineResolution,
+            preferredTimelineSelection,
+            movieId,
+            preferredTimedTextTrack,
+            downloadable
+          );
+          if (!preferredTimelineResult.error && preferredTimelineResult.timeline.length) {
+            const currentTime = Number(probe.currentTime);
+            preferredTranslation.available = true;
+            preferredTranslation.activeCue = findCueAtTime(preferredTimelineResult.timeline, currentTime);
+            preferredTranslation.readyState = 'ready';
+          } else if (preferredTimelineResult.error) {
+            preferredTranslation.readyState = 'fetch-error';
+          } else {
+            preferredTranslation.readyState = 'empty-timeline';
+          }
+        }
+      } else {
+        preferredTranslation.readyState = 'track-unavailable';
+      }
+    }
+
+    if (!preferredTimelineSelection) {
+      clearTimelineResolutionState(preferredTimelineResolution);
+      selection.preferredTimelineSelection = null;
+    }
+
     debugState.probe = probe;
     debugState.manifest = summarizeManifest(manifest);
     debugState.selection = selection;
@@ -1539,11 +1854,27 @@
       timelineKey,
       timeline: ready.state === 'deterministic-subtitles-ready' ? timeline : [],
       activeCue,
+      preferredTranslation,
       status: debugState.status,
       ready,
       reason
     };
+    syncAutoPause(probe, subtitleState, reason);
 
+    postDebug('refresh:summary', {
+      reason,
+      watchPathActive: WATCH_PATH_PATTERN.test(globalThis.location.pathname),
+      activeSessionId: probe.activeSessionId || null,
+      movieId: probe.movieId || null,
+      paused: typeof probe.paused === 'boolean' ? probe.paused : null,
+      playing: typeof probe.playing === 'boolean' ? probe.playing : null,
+      currentTime: Number.isFinite(Number(probe.currentTime)) ? Number(probe.currentTime) : null,
+      activeCueStartTime: activeCue ? Number(activeCue.startTime) : null,
+      activeCueEndTime: activeCue ? Number(activeCue.endTime) : null,
+      readyState: ready.state,
+      captionsEnabled,
+      timelineKey
+    });
     emitSnapshots(reason, pageState, subtitleState);
   }
 
@@ -1589,25 +1920,529 @@
     };
   }
 
+  function getSessionMediaElement(context) {
+    const elementResult = typeof context.sessionPlayer?.getElement === 'function'
+      ? unwrapResult(safeCall(() => context.sessionPlayer.getElement()))
+      : { value: null };
+    const element = elementResult.value;
+
+    return element && typeof element.addEventListener === 'function'
+      ? element
+      : null;
+  }
+
+  function getDomVideoElement(context) {
+    const sessionElement = getSessionMediaElement(context);
+
+    if (sessionElement && String(sessionElement.tagName || '').toLowerCase() === 'video') {
+      return sessionElement;
+    }
+
+    if (sessionElement && typeof sessionElement.querySelector === 'function') {
+      const nestedVideo = sessionElement.querySelector('video');
+      if (nestedVideo && typeof nestedVideo.currentTime === 'number') {
+        return nestedVideo;
+      }
+    }
+
+    const shell = findWatchPlayerShell();
+    if (shell && typeof shell.querySelector === 'function') {
+      const shellVideo = shell.querySelector('video');
+      if (shellVideo && typeof shellVideo.currentTime === 'number') {
+        return shellVideo;
+      }
+    }
+
+    const documentVideo = globalThis.document?.querySelector?.('video');
+    if (documentVideo && typeof documentVideo.currentTime === 'number') {
+      return documentVideo;
+    }
+
+    return null;
+  }
+
+  function handleMediaPlay() {
+    scheduleAutoPauseFrame('media-play');
+    scheduleRefresh('media-play');
+  }
+
+  function handleMediaPause() {
+    const snapshot = getLivePlaybackSnapshot();
+    if (Number.isFinite(Number(snapshot.currentTime))) {
+      autoPauseState.previousTime = Number(snapshot.currentTime);
+    }
+    // Any pause clears the active page-side timer. Only cue initiation may
+    // arm the next traversal again.
+    clearAutoPauseTimer('media-pause', { deactivate: false });
+    scheduleRefresh('media-pause');
+  }
+
+  function handleMediaSeeked() {
+    autoPauseState.awaitingSeeked = false;
+    resetAutoPauseTraversal('media-seeked');
+    const targetTime = Number(autoPauseState.pendingSeekTargetTime);
+    const timeline = Array.isArray(activeTimelineResolution.result?.timeline)
+      ? activeTimelineResolution.result.timeline
+      : [];
+    const targetCue = Number.isFinite(targetTime)
+      ? findCueAtTime(timeline, targetTime)
+      : null;
+    if (targetCue) {
+      // A completed seek initiates the target cue traversal. This is the only
+      // cue-init path for navigation.
+      setAutoPauseTraversal(targetCue, targetCue.startTime, 'seeked-target-cue');
+    }
+    autoPauseState.pendingSeekTargetTime = null;
+    if (autoPauseState.pendingPlayAfterSeek) {
+      autoPauseState.pendingPlayAfterSeek = false;
+      const context = getSessionContext();
+      if (typeof context.sessionPlayer?.play === 'function') {
+        safeCall(() => context.sessionPlayer.play());
+      } else {
+        const snapshot = getLivePlaybackSnapshot();
+        if (snapshot.mediaElement && typeof snapshot.mediaElement.play === 'function') {
+          safeCall(() => snapshot.mediaElement.play());
+        }
+      }
+    }
+    scheduleAutoPauseFrame('media-seeked');
+    scheduleRefresh('media-seeked');
+  }
+
+  function handleMediaRateChange() {
+    scheduleAutoPauseFrame('media-ratechange');
+    scheduleRefresh('media-ratechange');
+  }
+
+  function syncMediaElementBindings(context) {
+    const nextMediaElement = getSessionMediaElement(context);
+
+    if (boundMediaElement === nextMediaElement) {
+      return;
+    }
+
+    if (boundMediaElement) {
+      boundMediaElement.removeEventListener('play', handleMediaPlay, true);
+      boundMediaElement.removeEventListener('pause', handleMediaPause, true);
+      boundMediaElement.removeEventListener('seeked', handleMediaSeeked, true);
+      boundMediaElement.removeEventListener('ratechange', handleMediaRateChange, true);
+    }
+
+    boundMediaElement = nextMediaElement;
+
+    if (!boundMediaElement) {
+      resetAutoPauseTraversal('media-detach');
+      clearAutoPauseTimer('media-detach');
+      return;
+    }
+
+    boundMediaElement.addEventListener('play', handleMediaPlay, true);
+    boundMediaElement.addEventListener('pause', handleMediaPause, true);
+    boundMediaElement.addEventListener('seeked', handleMediaSeeked, true);
+    boundMediaElement.addEventListener('ratechange', handleMediaRateChange, true);
+  }
+
+  function shouldAutoPauseForState(probe, subtitleState) {
+    return Boolean(
+      subtitlePreferences.extensionEnabled
+      && subtitlePreferences.autoPauseEnabled
+      && subtitleState.ready?.state === 'deterministic-subtitles-ready'
+      && subtitleState.captionsEnabled
+    );
+  }
+
+  function getLivePlaybackSnapshot() {
+    const context = getSessionContext();
+    const mediaElement = getSessionMediaElement(context);
+    const videoElement = getDomVideoElement(context);
+    let paused = null;
+
+    if (typeof context.sessionPlayer?.getPaused === 'function') {
+      const pausedResult = unwrapResult(safeCall(() => context.sessionPlayer.getPaused()));
+      if (typeof pausedResult.value === 'boolean') {
+        paused = pausedResult.value;
+      }
+    }
+
+    if (paused === null && typeof context.sessionPlayer?.getPlaying === 'function') {
+      const playingResult = unwrapResult(safeCall(() => context.sessionPlayer.getPlaying()));
+      if (typeof playingResult.value === 'boolean') {
+        paused = !playingResult.value;
+      }
+    }
+
+    if (paused === null && mediaElement && typeof mediaElement.paused === 'boolean') {
+      paused = mediaElement.paused;
+    }
+
+    const mediaTime = mediaElement && typeof mediaElement.currentTime === 'number'
+      ? Number(mediaElement.currentTime)
+      : null;
+    const videoTime = videoElement && typeof videoElement.currentTime === 'number'
+      ? Number(videoElement.currentTime)
+      : null;
+    const playerTime = typeof context.sessionPlayer?.getCurrentTime === 'function'
+      ? normalizePlayerTime(unwrapResult(safeCall(() => context.sessionPlayer.getCurrentTime())).value)
+      : null;
+    const currentTime = Number.isFinite(videoTime)
+      ? videoTime
+      : playerTime;
+
+    return {
+      context,
+      mediaElement,
+      videoElement,
+      paused,
+      currentTime,
+      mediaTime,
+      videoTime,
+      playerTime
+    };
+  }
+
+  function maybeLogAutoPauseFrameCheck(detail) {
+    const now = Date.now();
+    const currentTime = Number(detail.currentTime);
+    const triggerTime = Number(detail.triggerTime);
+    const delta = Number(detail.delta);
+    const nearTrigger = (
+      Number.isFinite(currentTime)
+      && Number.isFinite(triggerTime)
+      && Math.abs(currentTime - triggerTime) <= 0.6
+    );
+    const hasMeaningfulDelta = Number.isFinite(delta) && Math.abs(delta) >= 0.008;
+
+    if (!nearTrigger && !hasMeaningfulDelta) {
+      return;
+    }
+
+    if ((now - autoPauseState.lastFrameCheckLogAt) < 120) {
+      return;
+    }
+
+    autoPauseState.lastFrameCheckLogAt = now;
+    postDebug('page-autopause:frame-check', detail);
+  }
+
+  function runAutoPauseFrame() {
+    const frameSeekGeneration = autoPauseState.seekGeneration;
+    autoPauseState.rafId = null;
+
+    if (!autoPauseState.active) {
+      return;
+    }
+
+    if (autoPauseState.awaitingSeeked) {
+      return;
+    }
+
+    if (!subtitlePreferences.extensionEnabled || !subtitlePreferences.autoPauseEnabled) {
+      clearAutoPauseTimer('disabled');
+      return;
+    }
+
+    const timeline = Array.isArray(activeTimelineResolution.result?.timeline)
+      ? activeTimelineResolution.result.timeline
+      : [];
+    if (!timeline.length) {
+      resetAutoPauseTraversal('no-timeline');
+      clearAutoPauseTimer('no-timeline');
+      return;
+    }
+
+    const snapshot = getLivePlaybackSnapshot();
+    if (frameSeekGeneration !== autoPauseState.seekGeneration) {
+      return;
+    }
+    const currentTime = Number(snapshot.currentTime);
+    if (!Number.isFinite(currentTime)) {
+      scheduleAutoPauseFrame(null);
+      return;
+    }
+
+    const traversalCueKey = autoPauseState.currentCueKey;
+    const traversalCueStartTime = Number(autoPauseState.currentCueStartTime);
+    const traversalCueEndTime = Number(autoPauseState.currentCueEndTime);
+    const traversalTriggerTime = Number(autoPauseState.currentCueTriggerTime);
+    const previousTime = Number.isFinite(autoPauseState.previousTime)
+      ? Number(autoPauseState.previousTime)
+      : currentTime;
+    const mediaTime = Number(snapshot.mediaTime);
+    const videoTime = Number(snapshot.videoTime);
+    const playerTime = Number(snapshot.playerTime);
+    const delta = Number.isFinite(mediaTime) && Number.isFinite(playerTime)
+      ? (playerTime - mediaTime)
+      : null;
+    const videoDelta = Number.isFinite(videoTime) && Number.isFinite(playerTime)
+      ? (playerTime - videoTime)
+      : null;
+
+    // Cue initiation arms auto-pause once for that cue traversal. The anchored
+    // traversal owns the pause decision until the cue changes or a seek
+    // initiates a different cue.
+    if (
+      traversalCueKey
+      && Number.isFinite(traversalCueEndTime)
+      && Number.isFinite(traversalTriggerTime)
+    ) {
+      maybeLogAutoPauseFrameCheck({
+        currentTime,
+        mediaTime: Number.isFinite(mediaTime) ? mediaTime : null,
+        videoTime: Number.isFinite(videoTime) ? videoTime : null,
+        playerTime: Number.isFinite(playerTime) ? playerTime : null,
+        delta,
+        videoDelta,
+        previousTime,
+        triggerTime: traversalTriggerTime,
+        cueStartTime: traversalCueStartTime,
+        cueEnd: traversalCueEndTime,
+        paused: snapshot.paused
+      });
+
+      if (snapshot.paused === true) {
+        autoPauseState.previousTime = currentTime;
+        return;
+      }
+
+      if (previousTime < traversalTriggerTime && currentTime >= traversalTriggerTime) {
+        if (frameSeekGeneration !== autoPauseState.seekGeneration) {
+          return;
+        }
+        let path = 'none';
+        if (typeof snapshot.context.sessionPlayer?.pause === 'function') {
+          safeCall(() => snapshot.context.sessionPlayer.pause());
+          path = 'sessionPlayer.pause';
+        } else if (snapshot.mediaElement && typeof snapshot.mediaElement.pause === 'function') {
+          safeCall(() => snapshot.mediaElement.pause());
+          path = 'mediaElement.pause';
+        }
+
+        autoPauseState.previousTime = currentTime;
+
+      postDebug('page-autopause:pause', {
+        path,
+        previousTime,
+        currentTime,
+        triggerTime: traversalTriggerTime,
+        cueStartTime: traversalCueStartTime,
+        cueEndTime: traversalCueEndTime
+      });
+      clearAutoPauseTimer(null, { deactivate: false });
+      scheduleRefresh('page-autopause');
+      return;
+    }
+
+      if (currentTime <= traversalCueEndTime) {
+        autoPauseState.previousTime = currentTime;
+        scheduleAutoPauseFrame(null);
+        return;
+      }
+    }
+
+    const liveCue = findCueAtTime(timeline, currentTime);
+    const liveCueKey = liveCue ? getCueKey(liveCue) : null;
+
+    if (!liveCue) {
+      resetAutoPauseTraversal(null);
+      autoPauseState.previousTime = currentTime;
+      if (snapshot.paused !== true) {
+        scheduleAutoPauseFrame(null);
+      }
+      return;
+    }
+
+    if (
+      !traversalCueKey
+      || traversalCueKey !== liveCueKey
+      || !Number.isFinite(traversalCueStartTime)
+      || !Number.isFinite(traversalCueEndTime)
+      || !Number.isFinite(traversalTriggerTime)
+    ) {
+      // Normal playback entering a new cue is the only non-seek cue-init path.
+      setAutoPauseTraversal(liveCue, liveCue.startTime, traversalCueKey ? 'live-cue-change' : 'initial-live-cue');
+      if (snapshot.paused !== true) {
+        scheduleAutoPauseFrame(null);
+      }
+      return;
+    }
+
+    autoPauseState.previousTime = currentTime;
+    scheduleAutoPauseFrame(null);
+  }
+
+  function syncAutoPause(probe, subtitleState, reason) {
+    if (!shouldAutoPauseForState(probe, subtitleState)) {
+      clearAutoPauseTimer(`inactive:${reason}`);
+      return;
+    }
+
+    if (autoPauseState.active) {
+      if (autoPauseState.awaitingSeeked) {
+        return;
+      }
+      if (autoPauseState.rafId === null && probe.paused === false) {
+        postDebug('page-autopause:stalled-loop', {
+          reason,
+          currentTime: probe.currentTime,
+          cueStartTime: autoPauseState.currentCueStartTime,
+          cueEndTime: autoPauseState.currentCueEndTime,
+          triggerTime: autoPauseState.currentCueTriggerTime,
+          previousTime: autoPauseState.previousTime
+        });
+        scheduleAutoPauseFrame(`stalled:${reason}`);
+      }
+      return;
+    }
+
+    autoPauseState.active = true;
+    postDebug('page-autopause:arm', {
+      cueStartTime: autoPauseState.currentCueStartTime,
+      cueEndTime: autoPauseState.currentCueEndTime,
+      currentTime: autoPauseState.previousTime,
+      reason
+    });
+    scheduleAutoPauseFrame(reason);
+  }
+
   function handlePlayerCommand(command, payload) {
     const context = getSessionContext();
+    const elementResult = typeof context.sessionPlayer?.getElement === 'function'
+      ? unwrapResult(safeCall(() => context.sessionPlayer.getElement()))
+      : { value: null };
+    const mediaElement = elementResult.value && typeof elementResult.value === 'object'
+      ? elementResult.value
+      : null;
+
+    function getPausedState() {
+      if (typeof context.sessionPlayer?.getPaused === 'function') {
+        const pausedResult = unwrapResult(safeCall(() => context.sessionPlayer.getPaused()));
+        if (typeof pausedResult.value === 'boolean') {
+          return pausedResult.value;
+        }
+      }
+
+      if (typeof context.sessionPlayer?.getPlaying === 'function') {
+        const playingResult = unwrapResult(safeCall(() => context.sessionPlayer.getPlaying()));
+        if (typeof playingResult.value === 'boolean') {
+          return !playingResult.value;
+        }
+      }
+
+      if (mediaElement && typeof mediaElement.paused === 'boolean') {
+        return mediaElement.paused;
+      }
+
+      return null;
+    }
+
+    postDebug('player-command:received', {
+      command,
+      payload: cloneJson(payload),
+      pausedState: getPausedState(),
+      hasSessionPlayer: Boolean(context.sessionPlayer),
+      hasMediaElement: Boolean(mediaElement),
+      currentTime: typeof context.sessionPlayer?.getCurrentTime === 'function'
+        ? normalizePlayerTime(unwrapResult(safeCall(() => context.sessionPlayer.getCurrentTime())).value)
+        : null
+    });
+
     if (command === 'seek') {
       const time = Number(payload?.time);
       const playerTime = toPlayerTime(time);
       if (Number.isFinite(playerTime) && typeof context.sessionPlayer?.seek === 'function') {
+        autoPauseState.seekGeneration += 1;
+        autoPauseState.awaitingSeeked = true;
+        autoPauseState.pendingSeekTargetTime = time;
+        autoPauseState.pendingPlayAfterSeek = false;
+        resetAutoPauseTraversal('player-command-seek');
+        clearAutoPauseTimer('player-command-seek-await-seeked', { deactivate: false });
         safeCall(() => context.sessionPlayer.seek(playerTime));
-        if (payload?.preservePaused) {
-          if (typeof context.sessionPlayer?.pause === 'function') {
-            safeCall(() => context.sessionPlayer.pause());
-          } else if (typeof context.sessionPlayer?.getElement === 'function') {
-            const elementResult = unwrapResult(safeCall(() => context.sessionPlayer.getElement()));
-            if (elementResult.value && typeof elementResult.value.pause === 'function') {
-              safeCall(() => elementResult.value.pause());
-            }
-          }
-        }
+        postDebug('player-command:seek', {
+          time,
+          playerTime
+        });
         scheduleRefresh('player-seek');
       }
+      return;
+    }
+
+    if (command === 'seek-and-play') {
+      const time = Number(payload?.time);
+      const playerTime = toPlayerTime(time);
+      if (Number.isFinite(playerTime) && typeof context.sessionPlayer?.seek === 'function') {
+        autoPauseState.seekGeneration += 1;
+        autoPauseState.awaitingSeeked = true;
+        autoPauseState.pendingSeekTargetTime = time;
+        autoPauseState.pendingPlayAfterSeek = true;
+        resetAutoPauseTraversal('player-command-seek-and-play');
+        clearAutoPauseTimer('player-command-seek-and-play-await-seeked', { deactivate: false });
+        safeCall(() => context.sessionPlayer.seek(playerTime));
+        postDebug('player-command:seek-and-play', {
+          time,
+          playerTime
+        });
+        scheduleRefresh('player-seek-and-play');
+      }
+      return;
+    }
+
+    if (command === 'play') {
+      let path = 'none';
+      if (typeof context.sessionPlayer?.play === 'function') {
+        safeCall(() => context.sessionPlayer.play());
+        path = 'sessionPlayer.play';
+      } else if (mediaElement && typeof mediaElement.play === 'function') {
+        safeCall(() => mediaElement.play());
+        path = 'mediaElement.play';
+      }
+      postDebug('player-command:play', {
+        path
+      });
+      scheduleRefresh('player-play');
+      return;
+    }
+
+    if (command === 'pause') {
+      let path = 'none';
+      if (typeof context.sessionPlayer?.pause === 'function') {
+        safeCall(() => context.sessionPlayer.pause());
+        path = 'sessionPlayer.pause';
+      } else if (mediaElement && typeof mediaElement.pause === 'function') {
+        safeCall(() => mediaElement.pause());
+        path = 'mediaElement.pause';
+      }
+      postDebug('player-command:pause', {
+        path
+      });
+      scheduleRefresh('player-pause');
+      return;
+    }
+
+    if (command === 'toggle-playback') {
+      const paused = getPausedState();
+      let path = 'none';
+      if (paused === true) {
+        if (typeof context.sessionPlayer?.play === 'function') {
+          safeCall(() => context.sessionPlayer.play());
+          path = 'sessionPlayer.play';
+        } else if (mediaElement && typeof mediaElement.play === 'function') {
+          safeCall(() => mediaElement.play());
+          path = 'mediaElement.play';
+        }
+      } else if (paused === false) {
+        if (typeof context.sessionPlayer?.pause === 'function') {
+          safeCall(() => context.sessionPlayer.pause());
+          path = 'sessionPlayer.pause';
+        } else if (mediaElement && typeof mediaElement.pause === 'function') {
+          safeCall(() => mediaElement.pause());
+          path = 'mediaElement.pause';
+        }
+      }
+      postDebug('player-command:toggle-playback', {
+        paused,
+        path
+      });
+      scheduleRefresh('player-toggle-playback');
       return;
     }
 
@@ -1650,6 +2485,21 @@
       }
 
       handlePlayerCommand(event.data.command, event.data.payload || {});
+      return;
+    }
+
+    if (event.data.type === 'nll:page-config') {
+      if (loaderNonce && event.data.nonce !== loaderNonce) {
+        return;
+      }
+
+      subtitlePreferences.extensionEnabled = Boolean(event.data.payload?.extensionEnabled);
+      subtitlePreferences.autoPauseEnabled = Boolean(event.data.payload?.autoPauseEnabled);
+      subtitlePreferences.targetLanguage = String(event.data.payload?.targetLanguage || '');
+      subtitlePreferences.useNetflixTargetSubtitlesIfAvailable = Boolean(
+        event.data.payload?.useNetflixTargetSubtitlesIfAvailable
+      );
+      scheduleRefresh('preferences-change');
     }
   });
 

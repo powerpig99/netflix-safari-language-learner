@@ -10,6 +10,7 @@
     dualSubEnabled: document.getElementById('dual-sub-enabled'),
     autoPauseEnabled: document.getElementById('auto-pause-enabled'),
     targetLanguage: document.getElementById('target-language'),
+    useNetflixTargetSubtitlesIfAvailable: document.getElementById('use-netflix-target-subtitles-if-available'),
     translationProvider: document.getElementById('translation-provider'),
     providerLinkWrap: document.getElementById('provider-link-wrap'),
     providerLink: document.getElementById('provider-link'),
@@ -44,6 +45,7 @@
     elements.dualSubEnabled.checked = Boolean(state.dualSubEnabled);
     elements.autoPauseEnabled.checked = Boolean(state.autoPauseEnabled);
     elements.targetLanguage.value = state.targetLanguage;
+    elements.useNetflixTargetSubtitlesIfAvailable.checked = Boolean(state.useNetflixTargetSubtitlesIfAvailable);
     elements.translationProvider.value = state.translationProvider;
     elements.playbackSpeed.value = String(state.playbackSpeed);
     elements.subtitleFontSize.value = state.subtitleFontSize;
@@ -74,6 +76,9 @@
     elements.dualSubEnabled.addEventListener('change', () => persist({ dualSubEnabled: elements.dualSubEnabled.checked }));
     elements.autoPauseEnabled.addEventListener('change', () => persist({ autoPauseEnabled: elements.autoPauseEnabled.checked }));
     elements.targetLanguage.addEventListener('change', () => persist({ targetLanguage: elements.targetLanguage.value }));
+    elements.useNetflixTargetSubtitlesIfAvailable.addEventListener('change', () => persist({
+      useNetflixTargetSubtitlesIfAvailable: elements.useNetflixTargetSubtitlesIfAvailable.checked
+    }));
     elements.translationProvider.addEventListener('change', () => persist({ translationProvider: elements.translationProvider.value }));
     elements.playbackSpeed.addEventListener('change', () => persist({ playbackSpeed: Number(elements.playbackSpeed.value) }));
     elements.subtitleFontSize.addEventListener('change', () => persist({ subtitleFontSize: elements.subtitleFontSize.value }));

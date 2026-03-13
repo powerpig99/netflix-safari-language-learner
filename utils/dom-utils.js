@@ -55,20 +55,26 @@
 
     const anchorRect = anchor.getBoundingClientRect();
     const elementRect = floatingElement.getBoundingClientRect();
+    const usesFixedPosition = globalThis.getComputedStyle(floatingElement).position === 'fixed';
     const scrollX = globalThis.scrollX || globalThis.pageXOffset || 0;
     const scrollY = globalThis.scrollY || globalThis.pageYOffset || 0;
     const viewportWidth = globalThis.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = globalThis.innerHeight || document.documentElement.clientHeight || 0;
+    const horizontalOffset = usesFixedPosition ? 0 : scrollX;
+    const verticalOffset = usesFixedPosition ? 0 : scrollY;
 
-    const preferredLeft = anchorRect.left + scrollX + (anchorRect.width / 2) - (elementRect.width / 2);
-    const preferredTop = anchorRect.top + scrollY - elementRect.height - 12;
+    const preferredLeft = anchorRect.left + horizontalOffset + (anchorRect.width / 2) - (elementRect.width / 2);
+    const preferredTop = anchorRect.top + verticalOffset - elementRect.height - 12;
 
-    const left = clamp(preferredLeft, scrollX + 12, scrollX + viewportWidth - elementRect.width - 12);
-    const top = preferredTop > scrollY + 12
+    const left = clamp(preferredLeft, horizontalOffset + 12, horizontalOffset + viewportWidth - elementRect.width - 12);
+    const top = preferredTop > verticalOffset + 12
       ? preferredTop
-      : anchorRect.bottom + scrollY + 12;
+      : anchorRect.bottom + verticalOffset + 12;
+
+    const maxTop = Math.max(verticalOffset + 12, verticalOffset + viewportHeight - elementRect.height - 12);
 
     floatingElement.style.left = `${left}px`;
-    floatingElement.style.top = `${top}px`;
+    floatingElement.style.top = `${clamp(top, verticalOffset + 12, maxTop)}px`;
   }
 
   function ensureRelativePosition(element) {

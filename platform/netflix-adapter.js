@@ -10,7 +10,7 @@
     '.watch-video',
     '.NFPlayer'
   ];
-
+  const WATCH_PATH_PATTERN = /^\/watch(\/|$)/;
   function createEmitter() {
     const listeners = new Set();
 
@@ -100,7 +100,17 @@
     let sourceLanguage = 'en';
     let captionsEnabled = false;
     let currentTime = null;
+    let playbackPaused = null;
     let pageState = null;
+    let domScanHandle = null;
+    let watchRouteActive = WATCH_PATH_PATTERN.test(globalThis.location.pathname);
+    let preferredTranslation = {
+      available: false,
+      cue: null,
+      trackLanguage: null,
+      targetLanguage: null,
+      provider: null
+    };
 
     function emit(type, detail = {}) {
       emitter.emit({ type, ...detail });
@@ -114,7 +124,7 @@
       return Number.isFinite(currentTime) ? currentTime : (video ? video.currentTime : NaN);
     }
 
-    function seekToTime(time, options = {}) {
+    function seekAndPlay(time) {
       const nextTime = Number(time);
       if (!Number.isFinite(nextTime)) {
         return false;
@@ -123,10 +133,33 @@
       globalThis.postMessage({
         type: 'nll:player-command',
         nonce: app.pageScriptNonce || null,
-        command: 'seek',
+        command: 'seek-and-play',
         payload: {
-          time: nextTime,
-          preservePaused: Boolean(options.preservePaused)
+          time: nextTime
+        }
+      }, '*');
+      return true;
+    }
+
+    function togglePlayback() {
+      globalThis.postMessage({
+        type: 'nll:player-command',
+        nonce: app.pageScriptNonce || null,
+        command: 'toggle-playback',
+        payload: {}
+      }, '*');
+      return true;
+    }
+
+    function setSubtitlePreferences(preferences = {}) {
+      globalThis.postMessage({
+        type: 'nll:page-config',
+        nonce: app.pageScriptNonce || null,
+        payload: {
+          extensionEnabled: Boolean(preferences.extensionEnabled),
+          autoPauseEnabled: Boolean(preferences.autoPauseEnabled),
+          targetLanguage: String(preferences.targetLanguage || ''),
+          useNetflixTargetSubtitlesIfAvailable: Boolean(preferences.useNetflixTargetSubtitlesIfAvailable)
         }
       }, '*');
       return true;
@@ -161,18 +194,53 @@
       return title || candidates[0] || '';
     }
 
-    function getMountTarget() {
-      if (video) {
-        for (const selector of MOUNT_TARGET_SELECTORS) {
-          const candidate = video.closest(selector);
-          if (candidate) {
-            return candidate;
-          }
-        }
+    function getWatchPlayerShell(videoNode) {
+      if (!videoNode) {
+        return null;
+      }
 
-        if (video.parentElement) {
-          return video.parentElement;
+      for (const selector of MOUNT_TARGET_SELECTORS) {
+        const candidate = videoNode.closest(selector);
+        if (candidate) {
+          return candidate;
         }
+      }
+
+      return null;
+    }
+
+    function getVideoMountTarget(videoNode) {
+      const watchPlayerShell = getWatchPlayerShell(videoNode);
+      if (watchPlayerShell) {
+        return watchPlayerShell;
+      }
+
+      return videoNode.parentElement || null;
+    }
+
+    function isWatchSessionActive() {
+      return Boolean(pageState?.probe?.activeSessionId);
+    }
+
+    function isWatchPlaybackActive() {
+      return Boolean(watchRouteActive && isWatchSessionActive() && video && getWatchPlayerShell(video));
+    }
+
+    function setWatchRouteActive(isActive) {
+      const nextRouteState = Boolean(isActive);
+      if (watchRouteActive === nextRouteState) {
+        return;
+      }
+
+      watchRouteActive = nextRouteState;
+      syncVideo();
+      reportStatus();
+    }
+
+    function getMountTarget() {
+      const mountTarget = getVideoMountTarget(video);
+      if (mountTarget) {
+        return mountTarget;
       }
 
       return document.body;
@@ -270,15 +338,25 @@
       sourceLanguage = 'en';
       captionsEnabled = false;
       currentTime = null;
-      pageState = null;
+      playbackPaused = null;
+      preferredTranslation = {
+        available: false,
+        cue: null,
+        trackLanguage: null,
+        targetLanguage: null,
+        provider: null
+      };
       emit('captionsChanged', { enabled: false });
       emit('timelineReady', { timeline: [] });
       emit('activeSubtitleChanged', { cue: null });
+      emit('preferredTranslationChanged', { translation: preferredTranslation });
       reportStatus();
     }
 
     function syncVideo() {
-      const nextVideo = document.querySelector('video');
+      const nextVideo = (watchRouteActive && isWatchSessionActive())
+        ? Array.from(document.querySelectorAll('video')).find((candidate) => Boolean(getWatchPlayerShell(candidate))) || null
+        : null;
       if (nextVideo === video) {
         reportStatus();
         return;
@@ -298,6 +376,10 @@
       }
 
       pageState = payload;
+      playbackPaused = typeof payload.probe?.paused === 'boolean'
+        ? payload.probe.paused
+        : playbackPaused;
+      syncVideo();
       reportStatus();
     }
 
@@ -318,6 +400,33 @@
       const nextCurrentTime = typeof payload.ready?.currentTime === 'number'
         ? payload.ready.currentTime
         : currentTime;
+      const nextPreferredTranslation = payload.preferredTranslation && typeof payload.preferredTranslation === 'object'
+        ? {
+            available: Boolean(payload.preferredTranslation.available),
+            cue: payload.preferredTranslation.activeCue && typeof payload.preferredTranslation.activeCue === 'object'
+              ? {
+                  startTime: Number(payload.preferredTranslation.activeCue.startTime),
+                  endTime: Number(payload.preferredTranslation.activeCue.endTime),
+                  text: languageUtils.normalizeCueText(payload.preferredTranslation.activeCue.text)
+                }
+              : null,
+            trackLanguage: payload.preferredTranslation.trackLanguage
+              ? languageUtils.normalizeLanguageCode(payload.preferredTranslation.trackLanguage)
+              : null,
+            targetLanguage: payload.preferredTranslation.targetLanguage
+              ? String(payload.preferredTranslation.targetLanguage).toUpperCase()
+              : null,
+            provider: payload.preferredTranslation.provider
+              ? String(payload.preferredTranslation.provider)
+              : null
+          }
+        : {
+            available: false,
+            cue: null,
+            trackLanguage: null,
+            targetLanguage: null,
+            provider: null
+          };
       const nextActiveCue = findCueAtTime(nextTimeline, nextCurrentTime) || (
         payload.activeCue && typeof payload.activeCue === 'object'
           ? {
@@ -332,12 +441,21 @@
       const cueChanged = !cuesEqual(activeCue, nextActiveCue);
       const captionsChanged = captionsEnabled !== nextCaptionsEnabled;
       const sourceLanguageChanged = sourceLanguage !== nextSourceLanguage;
+      const preferredTranslationChanged = preferredTranslation.available !== nextPreferredTranslation.available
+        || preferredTranslation.trackLanguage !== nextPreferredTranslation.trackLanguage
+        || preferredTranslation.targetLanguage !== nextPreferredTranslation.targetLanguage
+        || preferredTranslation.provider !== nextPreferredTranslation.provider
+        || !cuesEqual(preferredTranslation.cue, nextPreferredTranslation.cue);
 
       timeline = nextTimeline;
       activeCue = nextActiveCue;
       sourceLanguage = nextSourceLanguage;
       captionsEnabled = nextCaptionsEnabled;
       currentTime = Number.isFinite(nextCurrentTime) ? nextCurrentTime : currentTime;
+      preferredTranslation = nextPreferredTranslation;
+      playbackPaused = typeof pageState?.probe?.paused === 'boolean'
+        ? pageState.probe.paused
+        : playbackPaused;
 
       if (sourceLanguageChanged || timelineChanged) {
         emit('timelineReady', { timeline: timeline.slice() });
@@ -351,11 +469,25 @@
         emit('activeSubtitleChanged', { cue: activeCue });
       }
 
+      if (preferredTranslationChanged) {
+        emit('preferredTranslationChanged', {
+          translation: preferredTranslation
+        });
+      }
+
       reportStatus();
     }
 
     function handlePageMessage(event) {
       if (!isExpectedPageMessage(event)) {
+        return;
+      }
+
+      if (event.data.type === 'nll:player-debug') {
+        emit('playerDebug', {
+          stage: event.data.payload?.stage || 'page-debug',
+          detail: event.data.payload?.detail || null
+        });
         return;
       }
 
@@ -382,13 +514,28 @@
       syncTitle();
     }
 
+    function scheduleDomScan() {
+      if (domScanHandle !== null) {
+        return;
+      }
+
+      const schedule = typeof globalThis.requestAnimationFrame === 'function'
+        ? globalThis.requestAnimationFrame.bind(globalThis)
+        : (callback) => globalThis.setTimeout(callback, 16);
+
+      domScanHandle = schedule(() => {
+        domScanHandle = null;
+        scanDom();
+      });
+    }
+
     async function init() {
       globalThis.addEventListener('message', handlePageMessage);
       scanDom();
       requestPageState('adapter-init');
 
       mutationObserver = new MutationObserver(() => {
-        scanDom();
+        scheduleDomScan();
       });
       mutationObserver.observe(document.documentElement, {
         childList: true,
@@ -415,6 +562,8 @@
         sourceLanguage,
         captionsEnabled,
         currentTime,
+        playbackPaused,
+        preferredTranslation,
         featureAvailability: getFeatureAvailability(),
         status: lastStatusMessage,
         pageScriptNonce: app.pageScriptNonce || null,
@@ -427,14 +576,22 @@
       init,
       getVideo,
       getCurrentTime,
-      seekToTime,
+      seekAndPlay,
+      togglePlayback,
+      setSubtitlePreferences,
       setNativeSubtitleVisibility,
       getTitle: () => title || getTitle(),
       getSourceLanguage,
       getMountTarget,
+      isWatchPlaybackActive,
+      setWatchRouteActive,
       getSubtitleContainer,
       getTimeline,
       getFeatureAvailability,
+      getPreferredTranslation: () => ({
+        ...preferredTranslation,
+        cue: preferredTranslation.cue ? { ...preferredTranslation.cue } : null
+      }),
       getDebugState,
       subscribe: emitter.subscribe
     };

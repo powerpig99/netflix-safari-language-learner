@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="72" y1="56" x2="440" y2="456" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#17191d"/>
+      <stop offset="1" stop-color="#070809"/>
+    </linearGradient>
+    <linearGradient id="bubble" x1="150" y1="96" x2="368" y2="278" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff6458"/>
+      <stop offset="1" stop-color="#c8102e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="166" y1="328" x2="346" y2="392" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff2c9"/>
+      <stop offset="1" stop-color="#ffd36a"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="32" y="32" width="448" height="448" rx="112" fill="url(#bg)"/>
+  <rect x="44" y="44" width="424" height="424" rx="100" stroke="rgba(255,255,255,0.08)"/>
+
+  <path
+    d="M146 132C146 114.327 160.327 100 178 100H334C351.673 100 366 114.327 366 132V250C366 267.673 351.673 282 334 282H244L194 332V282H178C160.327 282 146 267.673 146 250V132Z"
+    fill="url(#bubble)"
+  />
+  <path d="M226 150L308 191L226 232V150Z" fill="#fff8ef"/>
+
+  <rect x="146" y="342" width="220" height="26" rx="13" fill="#fff8ef"/>
+  <rect x="182" y="388" width="148" height="22" rx="11" fill="url(#accent)"/>
+</svg>

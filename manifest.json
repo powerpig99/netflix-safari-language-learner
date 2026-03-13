@@ -3,6 +3,15 @@
   "name": "Netflix Safari Language Learner",
   "version": "0.1.0",
   "description": "Dual subtitles, word lookup, translation cache, and playback controls for Netflix on Safari.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "64": "icons/icon-64.png",
+    "128": "icons/icon-128.png",
+    "256": "icons/icon-256.png",
+    "512": "icons/icon-512.png"
+  },
   "background": {
     "service_worker": "background.js"
   },
@@ -43,7 +52,6 @@
       ],
       "js": [
         "utils/language-utils.js",
-        "utils/extension-api.js",
         "utils/dom-utils.js",
         "database.js",
         "core/settings.js",
@@ -52,7 +60,7 @@
         "core/translation-queue.js",
         "core/word-translation.js",
         "core/overlay-controller.js",
-        "core/auto-pause.js",
+        "core/control-keyboard.js",
         "core/control-actions.js",
         "ui/control-icons.js",
         "ui/control-panel.js",
@@ -75,6 +83,13 @@
   ],
   "action": {
     "default_title": "Netflix Language Learner",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "64": "icons/icon-64.png",
+      "128": "icons/icon-128.png"
+    },
     "default_popup": "popup.html"
   },
   "options_page": "options/index.html"

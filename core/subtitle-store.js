@@ -53,6 +53,13 @@
         renderedText: null,
         translationKey: null
       },
+      preferredTranslation: {
+        available: false,
+        cue: null,
+        trackLanguage: null,
+        targetLanguage: null,
+        provider: null
+      },
       featureAvailability: { ...DEFAULT_FEATURE_AVAILABILITY },
       platformError: null,
       playerReady: false
@@ -63,6 +70,10 @@
         ...state,
         timeline: state.timeline.slice(),
         activeSubtitle: { ...state.activeSubtitle },
+        preferredTranslation: {
+          ...state.preferredTranslation,
+          cue: state.preferredTranslation.cue ? { ...state.preferredTranslation.cue } : null
+        },
         featureAvailability: { ...state.featureAvailability }
       };
     }
@@ -144,6 +155,27 @@
       emit();
     }
 
+    function setPreferredTranslation(preferredTranslation) {
+      const nextCue = normalizeCue(preferredTranslation && preferredTranslation.cue);
+      state = {
+        ...state,
+        preferredTranslation: {
+          available: Boolean(preferredTranslation && preferredTranslation.available),
+          cue: nextCue,
+          trackLanguage: preferredTranslation && preferredTranslation.trackLanguage
+            ? languageUtils.normalizeLanguageCode(preferredTranslation.trackLanguage)
+            : null,
+          targetLanguage: preferredTranslation && preferredTranslation.targetLanguage
+            ? String(preferredTranslation.targetLanguage).toUpperCase()
+            : null,
+          provider: preferredTranslation && preferredTranslation.provider
+            ? String(preferredTranslation.provider)
+            : null
+        }
+      };
+      emit();
+    }
+
     function setFeatureAvailability(featureAvailability) {
       state = {
         ...state,
@@ -190,6 +222,7 @@
       setSourceLanguage,
       setTimeline,
       setActiveCue,
+      setPreferredTranslation,
       setFeatureAvailability,
       setPlatformError,
       setPlayerReady

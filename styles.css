@@ -66,6 +66,10 @@
   color: #ffd0c2;
 }
 
+.nll-overlay__translation[data-state="netflix-unavailable"] {
+  visibility: hidden;
+}
+
 .nll-overlay__status {
   max-width: 100%;
   padding: 0.4rem 0.8rem;
@@ -132,7 +136,7 @@
 }
 
 .nll-word-tooltip {
-  position: absolute;
+  position: fixed;
   z-index: 2147482600;
   min-width: 180px;
   max-width: min(92vw, 320px);
@@ -142,6 +146,7 @@
   background: rgba(15, 20, 30, 0.96);
   color: var(--nll-text);
   box-shadow: var(--nll-shadow);
+  pointer-events: auto;
 }
 
 .nll-word-tooltip__word {
