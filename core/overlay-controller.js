@@ -4,8 +4,8 @@
   const domUtils = app.domUtils;
   const languageUtils = app.languageUtils;
   const extensionApi = app.extensionApi;
-  const BASE_SUBTITLE_BOTTOM_INSET_RATIO = 0.14;
-  const MIN_SUBTITLE_BOTTOM_INSET_PX = 56;
+  const BASE_SUBTITLE_BOTTOM_INSET_RATIO = 0.1;
+  const MIN_SUBTITLE_BOTTOM_INSET_PX = 10;
 
   function traceTranslation(stage, detail) {
     if (globalThis.__NLL_TRACE_TRANSLATION__ === false) {

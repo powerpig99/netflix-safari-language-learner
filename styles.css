@@ -5,7 +5,7 @@
   --nll-muted: rgba(255, 255, 255, 0.68);
   --nll-accent: #ffb347;
   --nll-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
-  --nll-text-shadow: 0 3px 18px rgba(0, 0, 0, 0.85);
+  --nll-text-shadow: 0 3px 18px rgba(0, 0, 0, 0.82);
 }
 
 .nll-overlay {
@@ -26,15 +26,17 @@
   flex-direction: column;
   gap: clamp(0.15rem, calc(0.28rem * var(--nll-video-scale)), 0.55rem);
   align-items: center;
+  width: 100%;
 }
 
 .nll-overlay__original {
   max-width: 100%;
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-  border-radius: 0;
+  padding: clamp(0.14rem, calc(0.18rem * var(--nll-video-scale)), 0.38rem)
+    clamp(0.6rem, calc(0.78rem * var(--nll-video-scale)), 1rem);
+  background: rgba(10, 10, 10, 0.2);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
+  backdrop-filter: blur(2px);
+  border-radius: 14px;
   text-align: center;
   color: var(--nll-text);
   pointer-events: auto;
@@ -46,16 +48,18 @@
 
 .nll-overlay__translation {
   max-width: 100%;
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-  border-radius: 0;
+  padding: clamp(0.12rem, calc(0.16rem * var(--nll-video-scale)), 0.34rem)
+    clamp(0.55rem, calc(0.72rem * var(--nll-video-scale)), 0.92rem);
+  background: rgba(8, 8, 8, 0.18);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(2px);
+  border-radius: 12px;
   text-align: center;
   line-height: 1.24;
   color: #ffe7c5;
   font-size: calc(var(--nll-translation-size) * var(--nll-video-scale));
   text-shadow: var(--nll-text-shadow);
+  align-self: center;
 }
 
 .nll-overlay__translation[data-state="loading"] {
