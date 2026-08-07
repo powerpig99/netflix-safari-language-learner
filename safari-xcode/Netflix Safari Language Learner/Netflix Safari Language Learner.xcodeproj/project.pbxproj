@@ -36,6 +36,7 @@
 		F10BCA1C2F633B4300524357 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA092F633B4300524357 /* manifest.json */; };
 		F10BCA1D2F633B4300524357 /* content-script.js in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA0A2F633B4300524357 /* content-script.js */; };
 		F10BCA1E2F633B4300524357 /* inject.js in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA0B2F633B4300524357 /* inject.js */; };
+		F10BCA1F2F633B4300524357 /* debug in Resources */ = {isa = PBXBuildFile; fileRef = F10BCA202F633B4300524357 /* debug */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -95,6 +96,7 @@
 		F10BCA092F633B4300524357 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = ../../../manifest.json; sourceTree = "<group>"; };
 		F10BCA0A2F633B4300524357 /* content-script.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-script.js"; path = "../../../content-script.js"; sourceTree = "<group>"; };
 		F10BCA0B2F633B4300524357 /* inject.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = inject.js; path = ../../../inject.js; sourceTree = "<group>"; };
+		F10BCA202F633B4300524357 /* debug */ = {isa = PBXFileReference; lastKnownFileType = folder; name = debug; path = ../../../debug; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -189,6 +191,7 @@
 				F10BCA092F633B4300524357 /* manifest.json */,
 				F10BCA0A2F633B4300524357 /* content-script.js */,
 				F10BCA0B2F633B4300524357 /* inject.js */,
+				F10BCA202F633B4300524357 /* debug */,
 			);
 			name = Resources;
 			path = "Netflix Safari Language Learner Extension";
@@ -312,6 +315,7 @@
 				F10BCA1A2F633B4300524357 /* README.md in Resources */,
 				F10BCA152F633B4300524357 /* tests in Resources */,
 				F10BCA0F2F633B4300524357 /* popup.js in Resources */,
+				F10BCA1F2F633B4300524357 /* debug in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
