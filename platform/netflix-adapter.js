@@ -334,7 +334,8 @@
       }
 
       lastStatusMessage = nextMessage;
-      emit('platformError', { error: nextMessage });
+      // Always emit, including null, so content script can clear stale banners.
+      emit('platformError', { error: nextMessage || null });
     }
 
     function syncTitle() {

@@ -2009,6 +2009,35 @@
     return typeof value === 'string' && (/^https?:\/\//i.test(value) || value.startsWith('//'));
   }
 
+  function collectHttpUrlsDeep(value, depth = 0, out = null, seen = null) {
+    const urls = out || [];
+    const visited = seen || new Set();
+    if (value == null || depth > 5) {
+      return urls;
+    }
+    if (typeof value === 'string') {
+      if (isHttpUrl(value)) {
+        urls.push(value.startsWith('//') ? `https:${value}` : value);
+      }
+      return urls;
+    }
+    if (typeof value !== 'object') {
+      return urls;
+    }
+    if (visited.has(value)) {
+      return urls;
+    }
+    visited.add(value);
+
+    if (Array.isArray(value)) {
+      value.forEach((entry) => collectHttpUrlsDeep(entry, depth + 1, urls, visited));
+      return urls;
+    }
+
+    Object.values(value).forEach((entry) => collectHttpUrlsDeep(entry, depth + 1, urls, visited));
+    return urls;
+  }
+
   function getUrlsForDownloadable(downloadable) {
     if (!downloadable || typeof downloadable !== 'object') {
       return [];
@@ -2040,22 +2069,36 @@
       }
     });
 
-    // Last resort: one-level deep scan for URL-like strings.
-    if (found.length === 0) {
-      Object.values(downloadable).forEach((value) => {
-        if (isHttpUrl(value)) {
-          found.push(value.startsWith('//') ? `https:${value}` : value);
-        } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-          Object.values(value).forEach((nested) => {
-            if (isHttpUrl(nested)) {
-              found.push(nested.startsWith('//') ? `https:${nested}` : nested);
-            }
-          });
-        }
-      });
-    }
+    // Deep scan: Safari manifests sometimes nest CDN URLs under unexpected keys.
+    collectHttpUrlsDeep(downloadable, 0, found);
 
     return Array.from(new Set(found));
+  }
+
+  function resolveSubtitleDownloadFromTrackDeep(track) {
+    const primary = resolveSubtitleDownload(track);
+    if (primary.url) {
+      return primary;
+    }
+
+    // Whole-track deep scan as last resort when profile objects lack URLs.
+    const deepUrls = collectHttpUrlsDeep(track).filter((url) => {
+      return /(vtt|ttml|dfxp|imsc|subtitle|timedtext|nflxvideo|\.xml)(\?|$)/i.test(url)
+        || /\/tt[0-9a-f]/i.test(url);
+    });
+
+    if (deepUrls.length > 0) {
+      return {
+        profile: primary.profile || primary.availableProfiles[0] || 'deep-url',
+        downloadableId: primary.downloadableId,
+        url: deepUrls[0],
+        urlCount: deepUrls.length,
+        hydrated: true,
+        availableProfiles: primary.availableProfiles
+      };
+    }
+
+    return primary;
   }
 
   function getPreferredSubtitleProfiles(track) {
@@ -2474,6 +2517,17 @@
       };
     }
 
+    // Live dual-subs via rendered DOM / HTML tracks must clear status even when
+    // CDN downloadables are still missing.
+    if (ready.state === 'deterministic-subtitles-ready') {
+      return {
+        stage: 'deterministic-subtitles-ready',
+        message: null,
+        source: ready.source || 'cdn',
+        cueCount: ready.cueCount
+      };
+    }
+
     if (!selection.matchedTimedTextTrack) {
       return {
         stage: 'active-track-missing-from-manifest',
@@ -2481,27 +2535,22 @@
       };
     }
 
-    if (ready.state === 'deterministic-subtitles-ready' && ready.source && ready.source !== 'cdn') {
-      return {
-        stage: 'deterministic-subtitles-ready',
-        message: null,
-        source: ready.source,
-        cueCount: ready.cueCount
-      };
-    }
-
     if (ready.state === 'waiting-for-downloadable') {
-      const lastPatch = requestHydration?.lastPatchedRequest || null;
-      const patchCount = Number(requestHydration?.patchCount || 0);
-      const reinstallCount = Number(requestHydration?.reinstallCount || 0);
-      const forceReselectCount = Number(requestHydration?.forceReselectCount || 0);
-      const patchSummary = ` Patches: ${patchCount}, reinstalls: ${reinstallCount}, force-reselects: ${forceReselectCount}, path: ${lastPatch?.path || lastPatch?.lrStyle || 'none'}.`;
-      const profileSummary = selection.downloadable?.availableProfiles?.length
-        ? ` Available profiles: ${selection.downloadable.availableProfiles.slice(0, 6).join(', ')}.`
-        : '';
+      // Keep this as debug-only stage without a user-facing banner once we are
+      // actively sampling rendered Netflix subtitles. The dual-sub overlay is
+      // the product surface; this hydration gap is not a hard failure.
       return {
         stage: 'manifest-captured-no-download-url',
-        message: `Safari captured the subtitle manifest, but the active track is not hydrated with a downloadable subtitle URL yet. Manifest tracks: ${manifestSummary.timedTextTrackCount}, usable tracks: ${manifestSummary.hydratedTimedTextTrackCount}, active language: ${selection.activeTimedTextTrack.language || selection.matchedTimedTextTrack?.language || 'unknown'}, chosen profile: ${selection.downloadable?.profile || 'none'}.${patchSummary}${profileSummary} Waiting for rendered Netflix subtitles as live source.`
+        message: null,
+        detail: {
+          manifestTracks: manifestSummary.timedTextTrackCount,
+          usableTracks: manifestSummary.hydratedTimedTextTrackCount,
+          activeLanguage: selection.activeTimedTextTrack.language || selection.matchedTimedTextTrack?.language || null,
+          chosenProfile: selection.downloadable?.profile || null,
+          availableProfiles: selection.downloadable?.availableProfiles || [],
+          patches: Number(requestHydration?.patchCount || 0),
+          forceReselects: Number(requestHydration?.forceReselectCount || 0)
+        }
       };
     }
 
@@ -2637,7 +2686,7 @@
 
       if (matchedTimedTextTrack) {
         sourceLanguage = matchedTimedTextTrack.language || sourceLanguage;
-        const downloadable = resolveSubtitleDownload(matchedTimedTextTrack);
+        const downloadable = resolveSubtitleDownloadFromTrackDeep(matchedTimedTextTrack);
         activeTimelineSelection = buildTimelineSelection(movieId, matchedTimedTextTrack, downloadable);
         selection.downloadable = {
           profile: downloadable.profile,
@@ -2771,7 +2820,7 @@
         preferredTranslation.trackFound = true;
         preferredTranslation.trackLanguage = preferredTimedTextTrack.language || preferredTimedTextTrack.bcp47 || null;
         preferredTranslation.readyState = 'waiting-for-downloadable';
-        const downloadable = resolveSubtitleDownload(preferredTimedTextTrack);
+        const downloadable = resolveSubtitleDownloadFromTrackDeep(preferredTimedTextTrack);
         preferredTimelineSelection = buildTimelineSelection(movieId, preferredTimedTextTrack, downloadable);
         selection.preferredDownloadable = {
           profile: downloadable.profile,

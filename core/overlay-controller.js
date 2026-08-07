@@ -406,8 +406,11 @@
         }
       }
 
-      statusLine.hidden = !state.platformError;
-      statusLine.textContent = state.platformError || '';
+      // Never park a long hydration warning between live dual-sub lines.
+      const hasLiveDualSubs = Boolean(state.activeSubtitle.cue && state.activeSubtitle.cue.text);
+      const showStatus = Boolean(state.platformError) && !hasLiveDualSubs;
+      statusLine.hidden = !showStatus;
+      statusLine.textContent = showStatus ? (state.platformError || '') : '';
       requestLayoutUpdate();
     }
 

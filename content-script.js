@@ -155,11 +155,17 @@
         case 'timelineReady':
           syncFromAdapter(settings.targetLanguage);
           if (!adapter.getTimeline().length) {
-          subtitleStore.setActiveCue(null, settings.targetLanguage);
-        }
-        break;
+            subtitleStore.setActiveCue(null, settings.targetLanguage);
+          } else {
+            subtitleStore.setPlatformError(null);
+          }
+          break;
       case 'activeSubtitleChanged':
         subtitleStore.setActiveCue(event.cue, settings.targetLanguage);
+        // Dual-subs are live: never keep a hydration warning between subtitle lines.
+        if (event.cue) {
+          subtitleStore.setPlatformError(null);
+        }
         if (event.cue) {
           const preferred = typeof adapter.getPreferredTranslation === 'function'
             ? adapter.getPreferredTranslation()
@@ -183,6 +189,13 @@
         break;
       case 'preferredTranslationChanged':
         subtitleStore.setPreferredTranslation(event.translation);
+        // If Netflix just delivered target-language text, drop machine-translation pending UI.
+        if (event.translation && event.translation.available && event.translation.cue) {
+          subtitleStore.setPlatformError(null);
+        }
+        break;
+      case 'timelineReady':
+        // fallthrough handled above in combined case — keep error clear when timeline exists
         break;
       case 'titleChanged':
         subtitleStore.setTitle(event.title, settings.targetLanguage);
@@ -191,10 +204,18 @@
         }).catch(() => {});
         break;
       case 'platformError':
-        subtitleStore.setPlatformError(typeof event.error === 'string' ? event.error : null);
-          break;
-        default:
-          break;
+        // Ignore empty/null errors (explicit clear). Ignore hydration banners when
+        // dual-subs already have a live original cue.
+        if (event.error == null || event.error === '') {
+          subtitleStore.setPlatformError(null);
+        } else if (subtitleStore.getState().activeSubtitle.cue) {
+          subtitleStore.setPlatformError(null);
+        } else {
+          subtitleStore.setPlatformError(typeof event.error === 'string' ? event.error : null);
+        }
+        break;
+      default:
+        break;
       }
     });
 
