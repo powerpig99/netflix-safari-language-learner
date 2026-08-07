@@ -1016,27 +1016,70 @@
     };
   }
 
-  function captureManifestCandidate(value) {
-    const candidate = value && value.result && Array.isArray(value.result.timedtexttracks)
-      ? value.result
-      : null;
+  function storeManifest(candidate, source = 'unknown') {
+    if (!candidate || !Array.isArray(candidate.timedtexttracks)) {
+      return false;
+    }
 
-    if (!candidate) {
-      return;
+    const movieId = candidate.movieId != null ? String(candidate.movieId) : null;
+    if (!movieId) {
+      return false;
     }
 
     const manifest = cloneJson(candidate);
     if (!manifest || !Array.isArray(manifest.timedtexttracks)) {
-      return;
+      return false;
     }
 
-    const movieId = manifest.movieId != null ? String(manifest.movieId) : null;
-    if (!movieId) {
-      return;
-    }
-
-    const merged = mergeManifest(manifestCache.get(movieId) || null, manifest);
+    const previous = manifestCache.get(movieId) || null;
+    const merged = mergeManifest(previous, manifest);
+    const previousHydrated = countHydratedTimedTextTracks(previous);
+    const nextHydrated = countHydratedTimedTextTracks(merged);
     manifestCache.set(movieId, merged);
+
+    if (!previous || nextHydrated > previousHydrated || merged.timedtexttracks.length !== (previous.timedtexttracks || []).length) {
+      scheduleRefresh(`manifest-captured:${source}`);
+    }
+
+    return true;
+  }
+
+  function captureManifestCandidate(value, depth = 0, seen = null) {
+    if (!value || typeof value !== 'object' || depth > 5) {
+      return;
+    }
+
+    const visited = seen || new Set();
+    if (visited.has(value)) {
+      return;
+    }
+    visited.add(value);
+
+    // LR shape: { result: { movieId, timedtexttracks: [...] } }
+    if (value.result && typeof value.result === 'object' && Array.isArray(value.result.timedtexttracks)) {
+      storeManifest(value.result, 'json-result');
+    }
+
+    // Direct manifest object.
+    if (Array.isArray(value.timedtexttracks) && value.movieId != null) {
+      storeManifest(value, 'json-direct');
+    }
+
+    // Nested under common Netflix response wrappers.
+    const nestedKeys = ['video', 'data', 'movies', 'movie', 'value', 'payload', 'body'];
+    nestedKeys.forEach((key) => {
+      if (value[key] && typeof value[key] === 'object') {
+        captureManifestCandidate(value[key], depth + 1, visited);
+      }
+    });
+
+    // Arrays of movie/manifest objects.
+    if (Array.isArray(value)) {
+      const limit = Math.min(value.length, 20);
+      for (let index = 0; index < limit; index += 1) {
+        captureManifestCandidate(value[index], depth + 1, visited);
+      }
+    }
   }
 
   JSON.parse = function patchedJsonParse() {
@@ -1048,6 +1091,67 @@
     }
     return value;
   };
+
+  // Safari/Netflix often parse API bodies via Response.json(), which never hits JSON.parse.
+  if (typeof Response !== 'undefined' && Response.prototype && typeof Response.prototype.json === 'function') {
+    const originalResponseJson = Response.prototype.json;
+    Response.prototype.json = function patchedResponseJson() {
+      return originalResponseJson.apply(this, arguments).then((value) => {
+        try {
+          captureManifestCandidate(value);
+        } catch (error) {
+          // Ignore capture failures.
+        }
+        return value;
+      });
+    };
+  }
+
+  function synthesizeManifestFromPlayerTracks(movieId, sessionPlayer) {
+    if (!movieId || !sessionPlayer || typeof sessionPlayer.getTimedTextTrackList !== 'function') {
+      return null;
+    }
+
+    const listResult = unwrapResult(safeCall(() => sessionPlayer.getTimedTextTrackList()));
+    const tracks = Array.isArray(listResult.value) ? listResult.value : null;
+    if (!tracks || tracks.length === 0) {
+      return null;
+    }
+
+    // Only synthesize when at least one track still carries downloadable metadata.
+    // Empty/stripped track lists would just reintroduce a false "manifest present" state.
+    if (!tracks.some(hasManifestLikeTrackData)) {
+      return null;
+    }
+
+    return {
+      movieId: String(movieId),
+      timedtexttracks: tracks,
+      audio_tracks: []
+    };
+  }
+
+  function resolveManifest(movieId, sessionPlayer) {
+    if (!movieId) {
+      return null;
+    }
+
+    const cached = manifestCache.get(movieId) || null;
+    if (cached && Array.isArray(cached.timedtexttracks) && cached.timedtexttracks.length > 0) {
+      // Prefer cache, but upgrade with player tracks that carry downloadables if cache is bare.
+      if (countHydratedTimedTextTracks(cached) > 0) {
+        return cached;
+      }
+    }
+
+    const synthesized = synthesizeManifestFromPlayerTracks(movieId, sessionPlayer);
+    if (synthesized) {
+      storeManifest(synthesized, 'player-track-list');
+      return manifestCache.get(movieId) || synthesized;
+    }
+
+    return cached;
+  }
 
   function isWatchPath() {
     return WATCH_PATH_PATTERN.test(globalThis.location.pathname);
@@ -1568,9 +1672,11 @@
     }
 
     if (!manifestSummary) {
+      const trackCount = probe.timedTextTrackList?.count || 0;
+      const hydrationPatches = requestHydration?.patchCount || 0;
       return {
         stage: 'waiting-for-manifest-capture',
-        message: 'LR-style Netflix player methods are present, but no timed-text manifest has been captured yet.'
+        message: `LR-style Netflix player methods are present, but no timed-text manifest has been captured yet. Player timed-text tracks: ${trackCount}. Request hydration patches: ${hydrationPatches}. Toggle subtitles off/on or reload the watch page if this persists.`
       };
     }
 
@@ -1696,7 +1802,7 @@
     syncMediaElementBindings(context);
     const probe = buildProbe(context);
     const movieId = resolveMovieId(context.sessionPlayer) || (probe.movieId != null ? String(probe.movieId) : null);
-    const manifest = movieId ? (manifestCache.get(movieId) || null) : null;
+    const manifest = resolveManifest(movieId, context.sessionPlayer);
     const activeTimedTextTrack = probe.activeTimedTextTrack;
 
     const selection = {
