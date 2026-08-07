@@ -299,12 +299,25 @@
         return 'Waiting for the Netflix video player.';
       }
 
-      if (timeline.length > 0) {
+      // Live subtitle text is enough to clear "waiting" status, even when the
+      // rolling timeline history is still short.
+      if (timeline.length > 0 || activeCue) {
         return null;
       }
 
-      if (typeof pageState?.status?.message === 'string') {
-        return pageState.status.message;
+      const pageStatus = pageState?.status;
+      if (pageStatus && typeof pageStatus === 'object') {
+        if (pageStatus.stage === 'deterministic-subtitles-ready') {
+          return null;
+        }
+        if (typeof pageStatus.message === 'string' && pageStatus.message) {
+          return pageStatus.message;
+        }
+      }
+
+      // Only show this while the page script has never reported state.
+      if (pageState && typeof pageState === 'object') {
+        return null;
       }
 
       if (app.pageScriptNonce) {

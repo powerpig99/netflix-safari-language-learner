@@ -340,21 +340,13 @@
 
       const shouldShowTranslation = settings.dualSubEnabled && settingsStore.shouldTranslate(state.sourceLanguage);
       const preferred = state.preferredTranslation || {};
-      // Prefer Netflix human target track whenever it exists for this title,
-      // even if the downloadable cue is temporarily missing (do not machine-translate).
-      const preferNetflixTargetTrack = Boolean(
-        settings.useNetflixTargetSubtitlesIfAvailable
-        && (
-          preferred.available
-          || preferred.trackFound
-          || (
-            preferred.readyState
-            && preferred.readyState !== 'disabled'
-            && preferred.readyState !== 'track-unavailable'
-          )
-        )
-      );
-      const netflixTargetCue = preferred.available ? preferred.cue : null;
+      // Prefer Netflix human target-language text when we actually have cue text.
+      // If the track exists but is not downloadable yet, fall back to machine
+      // translation so dual-subs keep working on Safari.
+      const netflixTargetCue = preferred.available && preferred.cue && preferred.cue.text
+        ? preferred.cue
+        : null;
+      const preferNetflixTargetTrack = Boolean(netflixTargetCue);
       const translationEntry = state.activeSubtitle.translationKey
         ? translationQueue.getEntry(state.activeSubtitle.translationKey)
         : null;

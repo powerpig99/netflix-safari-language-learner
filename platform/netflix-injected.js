@@ -1703,9 +1703,16 @@
   const RENDERED_SUBTITLE_SELECTORS = [
     '.player-timedtext',
     '.player-timedtext-text-container',
+    '.player-timedtext span',
     '[data-uia="player-timedtext"]',
     '[data-uia="player-timedtext-text-container"]',
-    '.watch-video--player-view .player-timedtext'
+    '[data-uia="player-timedtext"] span',
+    '.watch-video--player-view .player-timedtext',
+    '.watch-video--player-view-background + div .player-timedtext',
+    // Broader Netflix UI variants observed on Safari.
+    '[class*="player-timedtext"]',
+    '[class*="TimedText"]',
+    '[class*="timed-text"]'
   ].join(', ');
 
   const renderedSubtitleTracker = {
@@ -1713,6 +1720,8 @@
     activeText: '',
     activeStartTime: null,
     lastEmittedKey: '',
+    lastSampleText: '',
+    lastSampleAt: 0,
     observer: null,
     attachedRoot: null,
     refreshTimer: null
@@ -1726,24 +1735,85 @@
       .trim();
   }
 
-  function readRenderedSubtitleText() {
-    const nodes = Array.from(document.querySelectorAll(RENDERED_SUBTITLE_SELECTORS));
-    if (!nodes.length) {
-      return '';
+  function isLikelySubtitleNode(node, videoRect) {
+    if (!(node instanceof Element)) {
+      return false;
     }
 
-    // Prefer deepest non-empty text containers (actual cue lines).
+    // Skip extension UI.
+    if (node.closest('.nll-scene, .nll-overlay, .nll-control-panel, .nll-word-tooltip')) {
+      return false;
+    }
+
+    const text = normalizeRenderedSubtitleText(node.innerText || node.textContent || '');
+    if (!text || text.length < 1 || text.length > 280) {
+      return false;
+    }
+
+    // Reject obvious chrome.
+    if (/^(play|pause|skip|next episode|audio|subtitles?|fullscreen)$/i.test(text)) {
+      return false;
+    }
+
+    const rect = node.getBoundingClientRect();
+    if (rect.width < 20 || rect.height < 10 || rect.width > (videoRect?.width || 4000) * 0.98) {
+      return false;
+    }
+
+    if (videoRect) {
+      const centerY = rect.top + (rect.height / 2);
+      const centerX = rect.left + (rect.width / 2);
+      // Subtitles usually sit in lower half of the rendered video.
+      if (centerY < videoRect.top + (videoRect.height * 0.35)) {
+        return false;
+      }
+      if (centerY > videoRect.bottom + 40 || centerY < videoRect.top - 10) {
+        return false;
+      }
+      if (centerX < videoRect.left - 40 || centerX > videoRect.right + 40) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function readRenderedSubtitleText() {
+    const video = document.querySelector('video');
+    const videoRect = video && typeof video.getBoundingClientRect === 'function'
+      ? video.getBoundingClientRect()
+      : null;
+
+    const selectorNodes = Array.from(document.querySelectorAll(RENDERED_SUBTITLE_SELECTORS));
+    const candidateNodes = new Set(selectorNodes);
+
+    // Fallback scan near the player when known class names are missing/changed.
+    if (candidateNodes.size === 0 && video) {
+      const shell = video.closest('.watch-video, [data-uia="player"], .NFPlayer') || document.body;
+      Array.from(shell.querySelectorAll('div, span')).forEach((node) => {
+        if (isLikelySubtitleNode(node, videoRect)) {
+          candidateNodes.add(node);
+        }
+      });
+    }
+
     const texts = [];
-    nodes.forEach((node) => {
+    candidateNodes.forEach((node) => {
       if (!(node instanceof Element)) {
         return;
       }
-      // Skip empty shells; keep visible line containers.
+      if (!isLikelySubtitleNode(node, videoRect) && !node.matches?.(RENDERED_SUBTITLE_SELECTORS)) {
+        // Still allow known timedtext nodes even if opacity is 0 (CSS-hidden by us).
+        if (!String(node.className || '').toLowerCase().includes('timedtext')
+          && !String(node.getAttribute?.('data-uia') || '').toLowerCase().includes('timedtext')) {
+          return;
+        }
+      }
+
       const text = normalizeRenderedSubtitleText(node.innerText || node.textContent || '');
       if (!text) {
         return;
       }
-      // Avoid double-counting parent+child with the same text.
       if (texts[texts.length - 1] === text) {
         return;
       }
@@ -1751,23 +1821,29 @@
     });
 
     if (!texts.length) {
+      renderedSubtitleTracker.lastSampleText = '';
+      renderedSubtitleTracker.lastSampleAt = Date.now();
       return '';
     }
 
     // Longest unique text is usually the full multi-line cue.
     texts.sort((left, right) => right.length - left.length);
-    return texts[0];
+    const chosen = texts[0];
+    renderedSubtitleTracker.lastSampleText = chosen;
+    renderedSubtitleTracker.lastSampleAt = Date.now();
+    return chosen;
   }
 
   function getPlaybackClockSeconds(probe) {
-    const fromProbe = Number(probe?.currentTime);
-    if (Number.isFinite(fromProbe)) {
-      return fromProbe;
-    }
-
+    // Prefer DOM video clock on Safari (matches control-ownership contract).
     const video = document.querySelector('video');
     const fromVideo = Number(video?.currentTime);
-    return Number.isFinite(fromVideo) ? fromVideo : null;
+    if (Number.isFinite(fromVideo)) {
+      return fromVideo;
+    }
+
+    const fromProbe = Number(probe?.currentTime);
+    return Number.isFinite(fromProbe) ? fromProbe : null;
   }
 
   function appendRenderedCue(cue) {
@@ -2629,7 +2705,7 @@
         timelineKey = domTimeline.timelineKey;
         sourceLanguage = domTimeline.sourceLanguage || sourceLanguage;
         captionsEnabled = true;
-        const currentTime = Number(probe.currentTime);
+        const currentTime = getPlaybackClockSeconds(probe);
         activeCue = findCueAtTime(timeline, currentTime);
         ready = {
           state: 'deterministic-subtitles-ready',
@@ -2640,16 +2716,37 @@
         };
         selection.timelineSource = 'dom-texttracks';
       } else {
+        // Always sample rendered subs while CDN is dry so dual-subs can recover
+        // as soon as Netflix paints a cue.
         const rendered = syncRenderedSubtitleTracker(probe, sourceLanguage);
-        if (rendered && (rendered.activeCue || rendered.timeline.length > 0)) {
-          timeline = rendered.timeline;
+        selection.renderedSample = {
+          text: renderedSubtitleTracker.lastSampleText || '',
+          at: renderedSubtitleTracker.lastSampleAt || 0
+        };
+        if (rendered && rendered.activeCue && rendered.activeCue.text) {
+          // Include open active cue in the timeline snapshot so adapter/content
+          // see a non-empty timeline and clear waiting status.
+          const openCue = rendered.activeCue;
+          const mergedTimeline = rendered.timeline.slice();
+          const last = mergedTimeline[mergedTimeline.length - 1];
+          if (!last || last.text !== openCue.text || Math.abs(last.startTime - openCue.startTime) > 0.15) {
+            mergedTimeline.push({
+              startTime: openCue.startTime,
+              endTime: openCue.endTime,
+              text: openCue.text
+            });
+          } else {
+            last.endTime = Math.max(last.endTime, openCue.endTime);
+          }
+
+          timeline = mergedTimeline;
           timelineKey = rendered.timelineKey;
           sourceLanguage = rendered.sourceLanguage || sourceLanguage;
-          captionsEnabled = Boolean(rendered.activeCue || rendered.timeline.length);
-          activeCue = rendered.activeCue;
+          captionsEnabled = true;
+          activeCue = openCue;
           ready = {
             state: 'deterministic-subtitles-ready',
-            cueCount: timeline.length + (rendered.activeCue ? 1 : 0),
+            cueCount: timeline.length,
             timelineKey,
             currentTime: getPlaybackClockSeconds(probe),
             source: 'rendered-dom'

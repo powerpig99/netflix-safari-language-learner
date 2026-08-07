@@ -164,21 +164,15 @@
           const preferred = typeof adapter.getPreferredTranslation === 'function'
             ? adapter.getPreferredTranslation()
             : null;
-          const preferNetflixTargetTrack = Boolean(
+          // Skip machine translation only when Netflix already provided target-line text.
+          const hasNetflixTargetText = Boolean(
             settings.useNetflixTargetSubtitlesIfAvailable
             && preferred
-            && (
-              preferred.available
-              || preferred.trackFound
-              || (
-                preferred.readyState
-                && preferred.readyState !== 'disabled'
-                && preferred.readyState !== 'track-unavailable'
-              )
-            )
+            && preferred.available
+            && preferred.cue
+            && preferred.cue.text
           );
-          // Skip machine translation when a Netflix target-language track exists.
-          if (!preferNetflixTargetTrack) {
+          if (!hasNetflixTargetText) {
             translationQueue.prefetch({
               title: subtitleStore.getState().title,
               cues: getCuePrefetchWindow(event.cue, subtitleStore.getState().timeline),

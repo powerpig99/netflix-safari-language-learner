@@ -9,13 +9,22 @@
 }
 
 /* Keep Netflix timedtext rendering alive (for DOM sampling) but hide it when
-   the extension owns the visible dual-sub overlay. */
+   the extension owns the visible dual-sub overlay. Use off-screen positioning
+   instead of opacity:0 so Safari still keeps/updates text content. */
 .watch-video.nll-hide-native-timedtext .player-timedtext,
 .watch-video.nll-hide-native-timedtext .player-timedtext-text-container,
 .watch-video.nll-hide-native-timedtext [data-uia="player-timedtext"],
-.watch-video.nll-hide-native-timedtext [data-uia="player-timedtext-text-container"] {
-  opacity: 0 !important;
+.watch-video.nll-hide-native-timedtext [data-uia="player-timedtext-text-container"],
+.watch-video.nll-hide-native-timedtext [class*="player-timedtext"],
+.watch-video.nll-hide-native-timedtext [class*="TimedText"] {
+  position: fixed !important;
+  left: -10000px !important;
+  top: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  opacity: 1 !important;
   pointer-events: none !important;
+  z-index: -1 !important;
 }
 
 /* One extension overlay scene covering the rendered video rect (mount-local). */
