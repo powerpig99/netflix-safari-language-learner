@@ -1,10 +1,10 @@
 # Netflix Safari Discovery
 
-Status: in progress
+Status: **closed for v1** (authoritative source chosen and implemented)
 
-This file is the required Phase 0 discovery checkpoint from [`PROJECT_SPEC.md`](/Users/jingliang/Documents/active_projects/netflix-safari-language-learner/PROJECT_SPEC.md).
+This file is the Phase 0 discovery checkpoint from [`PROJECT_SPEC.md`](../PROJECT_SPEC.md). Residual Safari edge cases may still appear; they should be treated as hardening, not as reopening the source-of-truth decision.
 
-## Questions
+## Questions (answered)
 
 1. Does Safari expose usable Netflix caption timing via `video.textTracks`?
 2. Are `text`, `startTime`, and `endTime` stable enough to drive navigation and auto-pause?
@@ -14,50 +14,66 @@ This file is the required Phase 0 discovery checkpoint from [`PROJECT_SPEC.md`](
 6. How should title extraction work across episode transitions?
 7. Which events or mutations reliably indicate player ready, subtitle changes, and episode transitions?
 
-## Current provisional decision
+## Decision (authoritative)
 
-- Authoritative source target: a single page-context Netflix player or subtitle source that can expose deterministic timing without mutating Netflix's runtime in a way that blocks page boot
-- Reason: deterministic timing is still the requirement, but page-load safety is a harder constraint than premature subtitle capture
-- Required validation: real Safari playback on Netflix episodes with subtitles toggled before and after extension init, including episode transitions
-- Current rule: do not use subtitle DOM fallback for runtime features; subtitle-dependent features stay disabled until a safe deterministic source is confirmed
+| Topic | Choice |
+|-------|--------|
+| **Authoritative subtitle source** | Single page-context path in `platform/netflix-injected.js` |
+| **How** | LR-style Netflix player probe + read-only timed-text manifest capture (`JSON.parse`) + narrow request hydration (`JSON.stringify`) + WebVTT fetch/parse |
+| **Not used for timing** | Subtitle DOM scraping; multi-source fallbacks; content-script auto-pause clocks |
+| **Mount target** | Netflix watch-player shell around the active video (`platform/netflix-adapter.js`) |
+| **Subtitle overlay placement** | Extension overlay positioned from rendered video rect (layout rewrite planned separately) |
+| **Playback activation** | Page watch-session state → `adapter.isWatchPlaybackActive()` |
+| **Auto-pause clock** | Page-side; prefer DOM `<video>.currentTime` on Safari (see control-ownership contract) |
+
+### Features enabled from this source
+
+When timeline is ready: dual subs, word lookup, prev/next/repeat, auto-pause.
+
+When timeline is not ready: those features stay disabled; no heuristic faking.
+
+### Explicit non-goals of discovery
+
+- Do not reintroduce broader `Function.prototype.apply` interception (caused page-load regression).
+- Do not use native control visibility as playback activation.
+- Do not keep a weaker timing source “just in case.”
 
 ## Implemented discovery path
 
-- `manifest.json` now splits boot in the LR shape: a tiny `document_start` injector and the main runtime at `document_end`.
-- `content-script.js` still gates all real initialization until the route is a Netflix watch page.
-- `inject.js` now auto-injects the page script from the tiny `document_start` loader so page-context hooks exist early enough for Netflix SPA watch transitions.
-- `platform/netflix-injected.js` is now the single deterministic subtitle source candidate under test. It:
-  - probes the LR-style Netflix player API
-  - captures timed-text manifests through a read-only `JSON.parse` hook
-  - patches matching outgoing Netflix request payloads through a narrow `JSON.stringify` hook to request richer subtitle hydration
-  - fetches and parses WebVTT when the active subtitle track resolves to a hydrated manifest entry
-  - publishes normalized timeline and active-cue state back to the adapter
-- The current implementation now uses the minimal LR-style `JSON.stringify` hydration patch, but it still does not patch `Function.prototype.apply`.
-- Core subtitle, translation, overlay, and control modules remain part of the watch-page runtime.
-- `platform/netflix-adapter.js` is still temporary, but the current rule is to keep core functionality loaded and gate subtitle-timed behavior only on the presence of a deterministic source.
-- A previous broader interception path caused a Netflix page-load regression and has been removed. The active version uses only read-side manifest capture plus the narrow write-side request hydration patch.
-- Concrete LR architecture findings are recorded in [`docs/language-reactor-netflix-research.md`](/Users/jingliang/Documents/active_projects/netflix-safari-language-learner/docs/language-reactor-netflix-research.md).
+- `manifest.json` splits boot: tiny `document_start` injector + main runtime at `document_end`.
+- `content-script.js` gates real work to Netflix watch routes; long-lived runtime uses `adapter.setWatchRouteActive` on route changes.
+- `inject.js` injects the page script early enough for SPA watch transitions.
+- `platform/netflix-injected.js` is the single deterministic subtitle + page-player command surface under test and in production use.
+- Core modules stay platform-agnostic; timing features gate on timeline readiness.
+- Architecture notes from LR research: [`docs/language-reactor-netflix-research.md`](language-reactor-netflix-research.md).
+- Ownership rules: [`docs/control-ownership-contract.md`](control-ownership-contract.md).
 
-## Capture template
+## Residual validation (hardening, not re-decision)
 
-### Environment
+Still worth re-checking after Netflix UI changes:
+
+- Subtitles on before extension init vs toggled after init
+- Episode transitions within a series
+- Fullscreen windowed transitions
+- Target-language Netflix track gaps when “Use Netflix subtitles if available” is on
+- Safari version upgrades
+
+### Capture template (for regression notes)
+
+#### Environment
 
 - Safari version:
 - macOS version:
 - Netflix page tested:
 - Subtitle language tested:
 
-### Findings
+#### Findings
 
-- `textTracks` available:
+- Timeline ready:
 - cue timing stable:
-- subtitle DOM selector:
-- control panel mount target:
-- title extraction method:
+- mount target:
+- issues:
 
-### Decision
+#### Decision
 
-- Chosen authoritative source:
-- Features enabled from that source:
-- Features explicitly disabled:
-- Follow-up implementation work:
+- Keep current injected source unless a clearer single signal replaces it entirely.

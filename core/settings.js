@@ -42,6 +42,18 @@
       const storedValues = await extensionApi.storage.get(keys);
       applyPatch(storedValues);
 
+      if (typeof languageUtils.migrateModelSettings === 'function') {
+        const modelPatch = languageUtils.migrateModelSettings(state);
+        if (Object.keys(modelPatch).length > 0) {
+          applyPatch(modelPatch);
+          try {
+            await extensionApi.storage.set(modelPatch);
+          } catch (error) {
+            console.warn('NetflixLanguageLearner: Failed to persist model migration:', error);
+          }
+        }
+      }
+
       if (!loaded) {
         removeStorageListener = extensionApi.storage.addChangeListener((changes, areaName) => {
           if (areaName !== 'sync') {
@@ -54,6 +66,9 @@
               patch[key] = changes[key].newValue;
             }
           });
+          if (typeof languageUtils.migrateModelSettings === 'function') {
+            Object.assign(patch, languageUtils.migrateModelSettings({ ...state, ...patch }));
+          }
           applyPatch(patch);
         });
         loaded = true;
@@ -62,7 +77,6 @@
       emit();
       return snapshot();
     }
-
     async function update(patch) {
       applyPatch(patch);
       await extensionApi.storage.set(patch);

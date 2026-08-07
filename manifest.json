@@ -59,6 +59,7 @@
         "core/translation-api.js",
         "core/translation-queue.js",
         "core/word-translation.js",
+        "core/overlay-layout-engine.js",
         "core/overlay-controller.js",
         "core/control-keyboard.js",
         "core/control-actions.js",

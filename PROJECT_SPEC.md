@@ -2,7 +2,9 @@
 
 Project specification for a new, separate browser-extension project that targets Netflix on Safari while preserving the non-audio learning features from the current YLE extension.
 
-This document is a planning artifact only. It references the current repository for reuse analysis, but it must not cause changes to the existing YLE project.
+**Status (2026-08):** Historical planning artifact. The extension is past scaffold/MVP. For live behavior ownership, use [`docs/control-ownership-contract.md`](docs/control-ownership-contract.md). For as-built feature inventory, use [`docs/feature-recap.md`](docs/feature-recap.md). For subtitle source decision, use [`docs/discovery.md`](docs/discovery.md). Module names and phases below may lag the code (e.g. `auto-pause.js` was never kept as a content-script module; auto-pause is page-owned in `platform/netflix-injected.js`).
+
+This document originally referenced the YLE repository for reuse analysis only; it must not cause changes to the existing YLE project.
 
 ## 1. Project intent
 

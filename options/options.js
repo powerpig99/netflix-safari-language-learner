@@ -97,9 +97,27 @@
     buildSelect(elements.targetLanguage, languageUtils.TARGET_LANGUAGES);
     buildSelect(elements.translationProvider, languageUtils.PROVIDERS, 'id', 'name');
     buildSelect(elements.geminiModel, languageUtils.GEMINI_MODELS, 'id', 'name');
+    buildSelect(elements.grokModel, languageUtils.GROK_MODELS || [], 'id', 'name');
     buildSelect(elements.subtitleFontSize, languageUtils.FONT_SIZE_OPTIONS, 'value', 'label');
 
     Object.assign(state, await extensionApi.storage.get(Object.keys(languageUtils.DEFAULT_SETTINGS)));
+
+    if (typeof languageUtils.migrateModelSettings === 'function') {
+      const modelPatch = languageUtils.migrateModelSettings(state);
+      if (Object.keys(modelPatch).length > 0) {
+        Object.assign(state, modelPatch);
+        await extensionApi.storage.set(modelPatch);
+      }
+    }
+
+    // Ensure select has a valid option if storage held a non-listed Grok ID.
+    if (languageUtils.GROK_MODELS && !languageUtils.GROK_MODELS.some((entry) => entry.id === state.grokModel)) {
+      state.grokModel = languageUtils.DEFAULT_SETTINGS.grokModel;
+    }
+    if (languageUtils.GEMINI_MODELS && !languageUtils.GEMINI_MODELS.some((entry) => entry.id === state.geminiModel)) {
+      state.geminiModel = languageUtils.DEFAULT_SETTINGS.geminiModel;
+    }
+
     render();
     bindInputs();
   }

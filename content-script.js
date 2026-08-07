@@ -90,45 +90,21 @@
     }
 
     function getRenderedVideoRect() {
+      const domUtils = app.domUtils;
       const video = adapter.getVideo();
-      if (!video || typeof video.getBoundingClientRect !== 'function') {
-        const mountTarget = adapter.getMountTarget();
-        return mountTarget && typeof mountTarget.getBoundingClientRect === 'function'
-          ? mountTarget.getBoundingClientRect()
-          : null;
+      const mountTarget = adapter.getMountTarget();
+      if (domUtils && typeof domUtils.getRenderedVideoRect === 'function') {
+        return domUtils.getRenderedVideoRect(video, mountTarget);
       }
 
-      const rect = video.getBoundingClientRect();
-      if (!rect.width || !rect.height || !(video.videoWidth > 0 && video.videoHeight > 0)) {
-        return rect;
+      if (video && typeof video.getBoundingClientRect === 'function') {
+        return video.getBoundingClientRect();
       }
 
-      const intrinsicAspect = video.videoWidth / video.videoHeight;
-      const boxAspect = rect.width / rect.height;
-      let renderedWidth = rect.width;
-      let renderedHeight = rect.height;
-
-      if (boxAspect > intrinsicAspect) {
-        renderedHeight = rect.height;
-        renderedWidth = renderedHeight * intrinsicAspect;
-      } else {
-        renderedWidth = rect.width;
-        renderedHeight = renderedWidth / intrinsicAspect;
-      }
-
-      const insetX = (rect.width - renderedWidth) / 2;
-      const insetY = (rect.height - renderedHeight) / 2;
-
-      return {
-        left: rect.left + insetX,
-        right: rect.left + insetX + renderedWidth,
-        top: rect.top + insetY,
-        bottom: rect.top + insetY + renderedHeight,
-        width: renderedWidth,
-        height: renderedHeight
-      };
+      return mountTarget && typeof mountTarget.getBoundingClientRect === 'function'
+        ? mountTarget.getBoundingClientRect()
+        : null;
     }
-
     function getPlayerRect() {
       const mountTarget = adapter.getMountTarget();
       if (mountTarget && typeof mountTarget.getBoundingClientRect === 'function') {
@@ -142,6 +118,11 @@
     }
 
     function isVisibleElement(node) {
+      const domUtils = app.domUtils;
+      if (domUtils && typeof domUtils.isVisibleElement === 'function') {
+        return domUtils.isVisibleElement(node);
+      }
+
       if (!(node instanceof Element)) {
         return false;
       }
@@ -154,7 +135,6 @@
       const rect = node.getBoundingClientRect();
       return rect.width > 4 && rect.height > 4;
     }
-
     function toDomPath(node) {
       if (!(node instanceof Element)) {
         return '';
@@ -1686,26 +1666,44 @@
       logRuntime('settings:loaded', {
         targetLanguage: settingsStore.get().targetLanguage
       });
-      await adapter.init();
-      logRuntime('adapter:init-complete', {
-        hasVideo: Boolean(adapter.getVideo())
-      });
-      syncSubtitlePreferences();
-      syncFromAdapter(settingsStore.get().targetLanguage);
-      databaseClient.open().then(() => {
+
+      try {
+        await adapter.init();
+        logRuntime('adapter:init-complete', {
+          hasVideo: Boolean(adapter.getVideo())
+        });
+      } catch (error) {
+        logRuntime('adapter:init-error', {
+          error: error?.message || String(error)
+        });
+        subtitleStore.setPlatformError(error?.message || String(error));
+        return;
+      }
+
+      try {
+        syncSubtitlePreferences();
+        syncFromAdapter(settingsStore.get().targetLanguage);
+      } catch (error) {
+        logRuntime('sync:error', {
+          error: error?.message || String(error)
+        });
+        subtitleStore.setPlatformError(error?.message || String(error));
+      }
+
+      try {
+        await databaseClient.open();
         logRuntime('database:open-success', {});
-      }).catch((error) => {
+      } catch (error) {
         logRuntime('database:open-error', {
           error: error?.message || String(error)
         });
-      });
+      }
     }).catch((error) => {
       logRuntime('bootstrap:error', {
         error: error?.message || String(error)
       });
       subtitleStore.setPlatformError(error.message || String(error));
     });
-
     runtimeController = {
       setWatchRouteActive(isActive) {
         logRuntime('route:watch-state', {

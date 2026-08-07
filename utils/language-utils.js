@@ -2,6 +2,10 @@
   const app = globalThis.NetflixLanguageLearner = globalThis.NetflixLanguageLearner || {};
   const utils = app.languageUtils = app.languageUtils || {};
 
+  // Model IDs last verified against provider docs: 2026-08-07
+  const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
+  const KIMI_MODEL = 'kimi-for-coding';
+
   const DEFAULT_SETTINGS = {
     extensionEnabled: true,
     dualSubEnabled: true,
@@ -15,9 +19,9 @@
     deeplApiKey: '',
     claudeApiKey: '',
     geminiApiKey: '',
-    geminiModel: 'gemini-2.5-flash-lite',
+    geminiModel: 'gemini-3.5-flash-lite',
     grokApiKey: '',
-    grokModel: 'grok-4-1-fast-non-reasoning-latest',
+    grokModel: 'grok-4.3',
     kimiApiKey: ''
   };
 
@@ -28,21 +32,62 @@
     { id: 'claude', name: 'Claude', description: 'Anthropic API', apiKeyField: 'claudeApiKey', link: 'https://console.anthropic.com/settings/keys' },
     { id: 'gemini', name: 'Gemini', description: 'Google AI Studio', apiKeyField: 'geminiApiKey', link: 'https://aistudio.google.com/apikey' },
     { id: 'grok', name: 'Grok', description: 'xAI API', apiKeyField: 'grokApiKey', link: 'https://console.x.ai' },
-    { id: 'kimi', name: 'Kimi', description: 'Moonshot API', apiKeyField: 'kimiApiKey', link: 'https://platform.moonshot.ai' }
+    { id: 'kimi', name: 'Kimi', description: 'Kimi Code / Moonshot API', apiKeyField: 'kimiApiKey', link: 'https://www.kimi.com/code/docs/en/' }
   ];
 
   const GEMINI_MODELS = [
     {
-      id: 'gemini-2.5-flash-lite',
-      name: 'Gemini 2.5 Flash-Lite',
-      description: 'Default low-cost model for subtitle translation.'
+      id: 'gemini-3.5-flash-lite',
+      name: 'Gemini 3.5 Flash-Lite',
+      description: 'Default: GA, high-throughput, cost-effective for subtitle batches.'
     },
     {
-      id: 'gemini-3.1-flash-lite-preview',
-      name: 'Gemini 3.1 Flash-Lite Preview',
-      description: 'Preview option with potentially better quality or latency.'
+      id: 'gemini-3.1-flash-lite',
+      name: 'Gemini 3.1 Flash-Lite',
+      description: 'Alternate GA Flash-Lite option.'
+    },
+    {
+      id: 'gemini-2.5-flash-lite',
+      name: 'Gemini 2.5 Flash-Lite',
+      description: 'Legacy 2.5 Flash-Lite (still available).'
     }
   ];
+
+  const GROK_MODELS = [
+    {
+      id: 'grok-4.3',
+      name: 'Grok 4.3',
+      description: 'Current general model; good default for subtitle translation.'
+    },
+    {
+      id: 'grok-4.5',
+      name: 'Grok 4.5',
+      description: 'Flagship quality; higher cost.'
+    },
+    {
+      id: 'grok-4.20-0309-non-reasoning',
+      name: 'Grok 4.20 Non-Reasoning',
+      description: 'Pinned non-reasoning snapshot if you need a fixed ID.'
+    }
+  ];
+
+  // Stored IDs that are retired/shut down; map to a live replacement.
+  const STALE_GEMINI_MODELS = {
+    'gemini-3.1-flash-lite-preview': 'gemini-3.1-flash-lite',
+    'gemini-3-pro-preview': 'gemini-3.5-flash-lite',
+    'gemini-3-flash-preview': 'gemini-3.5-flash-lite'
+  };
+
+  const STALE_GROK_MODELS = {
+    'grok-4-1-fast-non-reasoning-latest': 'grok-4.3',
+    'grok-4-1-fast-non-reasoning': 'grok-4.3',
+    'grok-4-1-fast-reasoning-latest': 'grok-4.3',
+    'grok-4-1-fast-reasoning': 'grok-4.3',
+    'grok-4-fast-non-reasoning': 'grok-4.3',
+    'grok-4-fast-reasoning': 'grok-4.3',
+    'grok-4-0709': 'grok-4.3',
+    'grok-code-fast-1': 'grok-4.3'
+  };
 
   const TARGET_LANGUAGES = [
     { code: 'EN-US', name: 'English (US)' },
@@ -276,9 +321,74 @@
     return FONT_SIZE_OPTIONS.find((entry) => entry.value === value) || FONT_SIZE_OPTIONS[1];
   }
 
+  function isKnownGeminiModel(modelId) {
+    return GEMINI_MODELS.some((entry) => entry.id === modelId);
+  }
+
+  function isKnownGrokModel(modelId) {
+    return GROK_MODELS.some((entry) => entry.id === modelId);
+  }
+
+  function normalizeGeminiModel(modelId) {
+    const raw = String(modelId || '').trim();
+    if (!raw) {
+      return DEFAULT_SETTINGS.geminiModel;
+    }
+    if (STALE_GEMINI_MODELS[raw]) {
+      return STALE_GEMINI_MODELS[raw];
+    }
+    if (isKnownGeminiModel(raw)) {
+      return raw;
+    }
+    return DEFAULT_SETTINGS.geminiModel;
+  }
+
+  function normalizeGrokModel(modelId) {
+    const raw = String(modelId || '').trim();
+    if (!raw) {
+      return DEFAULT_SETTINGS.grokModel;
+    }
+    if (STALE_GROK_MODELS[raw]) {
+      return STALE_GROK_MODELS[raw];
+    }
+    // Retired 4.1 / 4-fast family slugs and their -latest aliases.
+    if (/^grok-4-1-fast/i.test(raw) || /^grok-4-fast/i.test(raw)) {
+      return DEFAULT_SETTINGS.grokModel;
+    }
+    return raw;
+  }
+
+  /**
+   * Normalize model-related settings in place. Returns a patch of keys that
+   * changed so callers can persist the migration.
+   */
+  function migrateModelSettings(settings) {
+    const next = settings && typeof settings === 'object' ? settings : {};
+    const patch = {};
+
+    if ('geminiModel' in next || DEFAULT_SETTINGS.geminiModel) {
+      const normalized = normalizeGeminiModel(next.geminiModel);
+      if (normalized !== next.geminiModel) {
+        patch.geminiModel = normalized;
+      }
+    }
+
+    if ('grokModel' in next || DEFAULT_SETTINGS.grokModel) {
+      const normalized = normalizeGrokModel(next.grokModel);
+      if (normalized !== next.grokModel) {
+        patch.grokModel = normalized;
+      }
+    }
+
+    return patch;
+  }
+
   utils.DEFAULT_SETTINGS = DEFAULT_SETTINGS;
   utils.PROVIDERS = PROVIDERS;
   utils.GEMINI_MODELS = GEMINI_MODELS;
+  utils.GROK_MODELS = GROK_MODELS;
+  utils.CLAUDE_MODEL = CLAUDE_MODEL;
+  utils.KIMI_MODEL = KIMI_MODEL;
   utils.TARGET_LANGUAGES = TARGET_LANGUAGES;
   utils.FONT_SIZE_OPTIONS = FONT_SIZE_OPTIONS;
   utils.sleep = sleep;
@@ -292,4 +402,7 @@
   utils.getWiktionaryLanguage = getWiktionaryLanguage;
   utils.getProvider = getProvider;
   utils.getFontSizeOption = getFontSizeOption;
+  utils.normalizeGeminiModel = normalizeGeminiModel;
+  utils.normalizeGrokModel = normalizeGrokModel;
+  utils.migrateModelSettings = migrateModelSettings;
 })();

@@ -137,6 +137,9 @@
         return;
       }
 
+      const batchGeneration = batch[0]?.generation ?? generation;
+      const batchTargetLanguage = batch[0]?.targetLanguage;
+
       batch.forEach((request) => {
         pending.delete(request.key);
       });
@@ -144,21 +147,30 @@
       isFlushing = true;
       traceTranslation('queue:flush-start', {
         keys: batch.map((request) => request.key),
-        targetLanguage: batch[0]?.targetLanguage || null,
+        targetLanguage: batchTargetLanguage || null,
         texts: batch.map((request) => request.text),
-        generation: batch[0]?.generation ?? null
+        generation: batchGeneration
       });
 
       try {
+        if (isStaleRequestGeneration(batchGeneration, batchTargetLanguage)) {
+          traceTranslation('queue:flush-discard-before-request', {
+            keys: batch.map((request) => request.key),
+            batchGeneration,
+            generation
+          });
+          return;
+        }
+
         const result = await translationApi.fetchBatchTranslation(
           batch.map((request) => request.text),
-          batch[0].targetLanguage
+          batchTargetLanguage
         );
 
-        if (isStaleRequestGeneration(batch[0]?.generation, batch[0]?.targetLanguage)) {
+        if (isStaleRequestGeneration(batchGeneration, batchTargetLanguage)) {
           traceTranslation('queue:flush-discard-stale', {
             keys: batch.map((request) => request.key),
-            batchGeneration: batch[0]?.generation ?? null,
+            batchGeneration,
             generation
           });
           return;
@@ -212,10 +224,10 @@
           await databaseClient.saveSubtitleTranslations(recordsToSave);
         }
 
-        if (isStaleRequestGeneration(batch[0]?.generation, batch[0]?.targetLanguage)) {
+        if (isStaleRequestGeneration(batchGeneration, batchTargetLanguage)) {
           traceTranslation('queue:flush-discard-after-save', {
             keys: batch.map((request) => request.key),
-            batchGeneration: batch[0]?.generation ?? null,
+            batchGeneration,
             generation
           });
           return;
@@ -227,10 +239,10 @@
           translatedCount: recordsToSave.length
         });
       } catch (error) {
-        if (isStaleRequestGeneration(batch[0]?.generation, batch[0]?.targetLanguage)) {
+        if (isStaleRequestGeneration(batchGeneration, batchTargetLanguage)) {
           traceTranslation('queue:flush-discard-error-stale', {
             keys: batch.map((request) => request.key),
-            batchGeneration: batch[0]?.generation ?? null,
+            batchGeneration,
             generation
           });
           return;
@@ -254,31 +266,23 @@
         }
       }
     }
-
     async function prefetch({ title, cues, sourceLanguage }) {
       const settings = settingsStore.get();
       if (!settingsStore.shouldTranslate(sourceLanguage) || !Array.isArray(cues) || cues.length === 0) {
         return;
       }
 
-      const changedKeys = [];
       const targetLanguage = settings.targetLanguage;
       const requestGeneration = generation;
+      const lookupRequests = [];
+      const seenKeys = new Set();
 
       for (const cue of cues) {
-        if (isStaleRequestGeneration(requestGeneration, targetLanguage)) {
-          traceTranslation('queue:prefetch-abort-stale', {
-            targetLanguage,
-            requestGeneration,
-            generation
-          });
-          return;
-        }
-
         const request = buildRequest(title, cue, sourceLanguage, targetLanguage);
-        if (!request) {
+        if (!request || seenKeys.has(request.key)) {
           continue;
         }
+        seenKeys.add(request.key);
 
         traceTranslation('queue:prefetch-cue', {
           key: request.key,
@@ -297,21 +301,63 @@
           continue;
         }
 
-        const cached = await databaseClient.getSubtitleTranslation(
-          request.title,
-          request.sourceLanguage,
-          request.targetLanguage,
-          request.text
-        );
+        lookupRequests.push(request);
+      }
 
-        if (isStaleRequestGeneration(requestGeneration, targetLanguage)) {
-          traceTranslation('queue:prefetch-abort-after-cache-stale', {
-            key: request.key,
-            targetLanguage,
-            requestGeneration,
-            generation
-          });
+      if (lookupRequests.length === 0) {
+        return;
+      }
+
+      // One generation checkpoint after building the request list, then a single
+      // parallel cache round-trip so clear()/language changes cannot interleave
+      // mid-loop writes against a wiped map.
+      if (isStaleRequestGeneration(requestGeneration, targetLanguage)) {
+        traceTranslation('queue:prefetch-abort-stale', {
+          targetLanguage,
+          requestGeneration,
+          generation
+        });
+        return;
+      }
+
+      const cacheResults = await Promise.all(lookupRequests.map(async (request) => {
+        try {
+          const cached = await databaseClient.getSubtitleTranslation(
+            request.title,
+            request.sourceLanguage,
+            request.targetLanguage,
+            request.text
+          );
+          return { request, cached, error: null };
+        } catch (error) {
+          return { request, cached: null, error };
+        }
+      }));
+
+      if (isStaleRequestGeneration(requestGeneration, targetLanguage)) {
+        traceTranslation('queue:prefetch-abort-after-cache-stale', {
+          targetLanguage,
+          requestGeneration,
+          generation,
+          lookedUp: cacheResults.length
+        });
+        return;
+      }
+
+      const changedKeys = [];
+
+      cacheResults.forEach(({ request, cached, error }) => {
+        // Skip if another concurrent prefetch already claimed this key.
+        const existing = entries.get(request.key);
+        if (existing && (existing.status === 'success' || existing.status === 'pending')) {
           return;
+        }
+
+        if (error) {
+          traceTranslation('queue:prefetch-cache-error', {
+            key: request.key,
+            error: error?.message || String(error)
+          });
         }
 
         if (cached && cached.translatedText) {
@@ -325,7 +371,7 @@
             error: null
           });
           changedKeys.push(request.key);
-          continue;
+          return;
         }
 
         traceTranslation('queue:prefetch-cache-miss', {
@@ -338,15 +384,16 @@
           error: null
         });
         changedKeys.push(request.key);
-      }
+      });
 
       if (changedKeys.length > 0) {
         emit(changedKeys);
       }
 
-      queueFlush();
+      if (pending.size > 0) {
+        queueFlush();
+      }
     }
-
     async function retry({ title, cue, sourceLanguage }) {
       const settings = settingsStore.get();
       if (!settingsStore.shouldTranslate(sourceLanguage)) {

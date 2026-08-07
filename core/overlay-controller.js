@@ -4,8 +4,8 @@
   const domUtils = app.domUtils;
   const languageUtils = app.languageUtils;
   const extensionApi = app.extensionApi;
-  const BASE_SUBTITLE_BOTTOM_INSET_RATIO = 0.1;
-  const MIN_SUBTITLE_BOTTOM_INSET_PX = 10;
+  const layoutEngine = core.overlayLayoutEngine;
+  const layoutExclusionStore = core.layoutExclusionStore;
 
   function traceTranslation(stage, detail) {
     if (globalThis.__NLL_TRACE_TRANSLATION__ === false) {
@@ -34,45 +34,22 @@
       }
 
       const video = adapter.getVideo();
-      const scaleTarget = (video && typeof video.getBoundingClientRect === 'function') ? video : mountTarget;
-      if (!scaleTarget || typeof scaleTarget.getBoundingClientRect !== 'function') {
-        return null;
-      }
-
       const mountRect = mountTarget.getBoundingClientRect();
-      const videoRect = scaleTarget.getBoundingClientRect();
-      if (!mountRect.width || !mountRect.height || !videoRect.width || !videoRect.height) {
+      if (!mountRect.width || !mountRect.height) {
         return null;
       }
 
-      let contentRect = videoRect;
-
-      if (video && video.videoWidth > 0 && video.videoHeight > 0) {
-        const intrinsicAspect = video.videoWidth / video.videoHeight;
-        const boxAspect = videoRect.width / videoRect.height;
-        let renderedWidth = videoRect.width;
-        let renderedHeight = videoRect.height;
-
-        if (boxAspect > intrinsicAspect) {
-          renderedHeight = videoRect.height;
-          renderedWidth = renderedHeight * intrinsicAspect;
-        } else {
-          renderedWidth = videoRect.width;
-          renderedHeight = renderedWidth / intrinsicAspect;
-        }
-
-        const insetX = (videoRect.width - renderedWidth) / 2;
-        const insetY = (videoRect.height - renderedHeight) / 2;
-
-        contentRect = {
-          left: videoRect.left + insetX,
-          right: videoRect.left + insetX + renderedWidth,
-          top: videoRect.top + insetY,
-          bottom: videoRect.top + insetY + renderedHeight,
-          width: renderedWidth,
-          height: renderedHeight
-        };
+      const scaleTarget = (video && typeof video.getBoundingClientRect === 'function') ? video : mountTarget;
+      const videoRect = scaleTarget && typeof scaleTarget.getBoundingClientRect === 'function'
+        ? scaleTarget.getBoundingClientRect()
+        : null;
+      if (!videoRect || !videoRect.width || !videoRect.height) {
+        return null;
       }
+
+      const contentRect = (domUtils && typeof domUtils.getRenderedVideoRect === 'function'
+        ? domUtils.getRenderedVideoRect(video, mountTarget)
+        : null) || videoRect;
 
       return {
         mountRect,
@@ -82,6 +59,10 @@
     }
 
     function isVisibleNode(node) {
+      if (domUtils && typeof domUtils.isVisibleElement === 'function') {
+        return domUtils.isVisibleElement(node);
+      }
+
       if (!(node instanceof Element)) {
         return false;
       }
@@ -94,63 +75,68 @@
       const rect = node.getBoundingClientRect();
       return rect.width > 4 && rect.height > 4;
     }
+    function collectLayoutExclusions(contentRect) {
+      const exclusions = [];
 
-    function getBaseSubtitleBottomInset(contentRect) {
-      return Math.max(
-        MIN_SUBTITLE_BOTTOM_INSET_PX,
-        Math.round(contentRect.height * BASE_SUBTITLE_BOTTOM_INSET_RATIO)
-      );
-    }
-
-    function getBottomControlLift(contentRect, baseBottomInset) {
-      if (!mountTarget || typeof mountTarget.querySelectorAll !== 'function') {
-        return baseBottomInset;
+      if (layoutExclusionStore && typeof layoutExclusionStore.getAll === 'function') {
+        layoutExclusionStore.getAll().forEach((rect) => {
+          exclusions.push(rect);
+        });
       }
 
-      const interactiveNodes = mountTarget.querySelectorAll('button, [role="button"], input, [aria-label], [data-uia]');
-      const overlayRect = root ? root.getBoundingClientRect() : null;
-      const projectedOverlayHeight = overlayRect && overlayRect.height
-        ? overlayRect.height
-        : Math.max(root?.scrollHeight || 0, 72);
-      const projectedOverlayTop = contentRect.bottom - baseBottomInset - projectedOverlayHeight;
-      let overlapLift = baseBottomInset;
+      if (mountTarget && typeof mountTarget.querySelectorAll === 'function') {
+        const interactiveNodes = mountTarget.querySelectorAll('button, [role="button"], input, [aria-label], [data-uia]');
+        interactiveNodes.forEach((node) => {
+          if (!(node instanceof Element)) {
+            return;
+          }
 
-      interactiveNodes.forEach((node) => {
-        if (!(node instanceof Element)) {
-          return;
-        }
+          if (node.closest('.nll-overlay, .nll-control-panel, .nll-word-tooltip')) {
+            return;
+          }
 
-        if (node.closest('.nll-overlay, .nll-control-panel, .nll-word-tooltip')) {
-          return;
-        }
+          if (!isVisibleNode(node)) {
+            return;
+          }
 
-        if (!isVisibleNode(node)) {
-          return;
-        }
+          const rect = node.getBoundingClientRect();
+          if (rect.width <= 4 || rect.height <= 4) {
+            return;
+          }
 
-        const rect = node.getBoundingClientRect();
-        const centerY = rect.top + (rect.height / 2);
-        const centerX = rect.left + (rect.width / 2);
-        if (centerY < contentRect.top + (contentRect.height * 0.68)) {
-          return;
-        }
-        if (centerX < contentRect.left || centerX > contentRect.right) {
-          return;
-        }
-        if (rect.bottom < contentRect.top || rect.top > contentRect.bottom) {
-          return;
-        }
+          exclusions.push({
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+            right: rect.right,
+            bottom: rect.bottom
+          });
+        });
 
-        const overlapsProjectedSubtitleBand = rect.top < (contentRect.bottom - baseBottomInset)
-          && rect.bottom > projectedOverlayTop;
-        if (!overlapsProjectedSubtitleBand) {
-          return;
+        const panel = mountTarget.querySelector('.nll-control-panel.is-visible');
+        if (panel instanceof Element && isVisibleNode(panel)) {
+          const panelRect = panel.getBoundingClientRect();
+          if (panelRect.width > 4 && panelRect.height > 4) {
+            exclusions.push({
+              id: 'extension-control-panel',
+              left: panelRect.left,
+              top: panelRect.top,
+              width: panelRect.width,
+              height: panelRect.height,
+              right: panelRect.right,
+              bottom: panelRect.bottom
+            });
+          }
         }
+      }
 
-        overlapLift = Math.max(overlapLift, Math.round(contentRect.bottom - rect.top + 12));
-      });
+      // Prefer live exclusions; fall back to stable bands only when nothing else is known.
+      if (exclusions.length === 0 && layoutEngine && contentRect) {
+        return layoutEngine.computeControlBandExclusions(contentRect);
+      }
 
-      return overlapLift;
+      return exclusions;
     }
 
     function updateLayoutMetrics() {
@@ -163,21 +149,39 @@
       }
 
       const { mountRect, contentRect } = rects;
-      const widthScale = contentRect.width / 1280;
-      const heightScale = contentRect.height / 720;
-      const nextScale = Math.min(2.1, Math.max(1, Math.min(widthScale, heightScale)));
-      const horizontalCenter = (contentRect.left - mountRect.left) + (contentRect.width / 2);
-      const maxWidth = Math.min(contentRect.width * 0.96, 1480 * nextScale);
-      const baseBottomInset = getBaseSubtitleBottomInset(contentRect);
-      const bottomLift = getBottomControlLift(contentRect, baseBottomInset);
-      const videoBottomInset = Math.max(0, mountRect.bottom - contentRect.bottom);
+      const overlayRect = root ? root.getBoundingClientRect() : null;
+      const estimatedOverlayHeight = overlayRect && overlayRect.height
+        ? overlayRect.height
+        : Math.max(root?.scrollHeight || 0, 72);
 
-      root.style.setProperty('--nll-video-scale', String(nextScale.toFixed(3)));
-      root.style.left = `${horizontalCenter}px`;
-      root.style.width = `${Math.max(260, Math.round(maxWidth))}px`;
-      root.style.bottom = `${Math.round(videoBottomInset + bottomLift)}px`;
+      let placement = null;
+      if (layoutEngine && typeof layoutEngine.computeSubtitlePlacement === 'function') {
+        placement = layoutEngine.computeSubtitlePlacement({
+          mountRect,
+          contentRect,
+          exclusions: collectLayoutExclusions(contentRect),
+          estimatedOverlayHeight
+        });
+      }
+
+      if (!placement) {
+        // Minimal fallback if the layout engine script failed to load.
+        const scale = Math.min(2.1, Math.max(1, Math.min(contentRect.width / 1280, contentRect.height / 720)));
+        const baseBottomInset = Math.max(10, Math.round(contentRect.height * 0.1));
+        const videoBottomInset = Math.max(0, mountRect.bottom - contentRect.bottom);
+        placement = {
+          scale,
+          left: (contentRect.left - mountRect.left) + (contentRect.width / 2),
+          width: Math.max(260, Math.round(Math.min(contentRect.width * 0.96, 1480 * scale))),
+          bottom: Math.round(videoBottomInset + baseBottomInset)
+        };
+      }
+
+      root.style.setProperty('--nll-video-scale', String(placement.scale.toFixed(3)));
+      root.style.left = `${placement.left}px`;
+      root.style.width = `${placement.width}px`;
+      root.style.bottom = `${placement.bottom}px`;
     }
-
     function requestLayoutUpdate() {
       if (layoutFrame !== null) {
         return;
@@ -389,6 +393,11 @@
     const unsubscribeSettings = settingsStore.subscribe(render);
     const unsubscribeStore = subtitleStore.subscribe(render);
     const unsubscribeQueue = translationQueue.subscribe(render);
+    const unsubscribeExclusions = layoutExclusionStore && typeof layoutExclusionStore.subscribe === 'function'
+      ? layoutExclusionStore.subscribe(() => {
+        requestLayoutUpdate();
+      })
+      : () => {};
 
     return {
       syncMount: ensureRoot,
@@ -397,6 +406,7 @@
         unsubscribeSettings();
         unsubscribeStore();
         unsubscribeQueue();
+        unsubscribeExclusions();
         wordController.hideTooltip();
         if (root) {
           root.remove();

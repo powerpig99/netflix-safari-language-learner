@@ -13,8 +13,8 @@ importScripts('utils/language-utils.js', 'utils/extension-api.js');
   };
 
   const KIMI_API_URL = 'https://api.kimi.com/coding/v1/messages';
-  const KIMI_MODEL = 'kimi-coding/k2p5';
-
+  const KIMI_MODEL = languageUtils.KIMI_MODEL || 'kimi-for-coding';
+  const CLAUDE_MODEL = languageUtils.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
   let currentProvider = { ...DEFAULT_PROVIDER_STATE };
 
   async function loadProviderConfig() {
@@ -37,11 +37,18 @@ importScripts('utils/language-utils.js', 'utils/extension-api.js');
         : languageUtils.DEFAULT_SETTINGS.translationProvider;
       const provider = languageUtils.getProvider(providerId);
 
+      const geminiModel = typeof languageUtils.normalizeGeminiModel === 'function'
+        ? languageUtils.normalizeGeminiModel(settings.geminiModel)
+        : String(settings.geminiModel || languageUtils.DEFAULT_SETTINGS.geminiModel);
+      const grokModel = typeof languageUtils.normalizeGrokModel === 'function'
+        ? languageUtils.normalizeGrokModel(settings.grokModel)
+        : String(settings.grokModel || languageUtils.DEFAULT_SETTINGS.grokModel);
+
       currentProvider = {
         provider: provider.id,
         apiKey: provider.apiKeyField ? String(settings[provider.apiKeyField] || '') : '',
-        geminiModel: String(settings.geminiModel || languageUtils.DEFAULT_SETTINGS.geminiModel),
-        grokModel: String(settings.grokModel || languageUtils.DEFAULT_SETTINGS.grokModel)
+        geminiModel,
+        grokModel
       };
     } catch (error) {
       console.warn('NetflixLanguageLearner: Failed to load provider config:', error);
@@ -173,7 +180,7 @@ importScripts('utils/language-utils.js', 'utils/extension-api.js');
             'anthropic-dangerous-direct-browser-access': 'true'
           },
           body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
+            model: CLAUDE_MODEL,
             max_tokens: maxTokens,
             messages: [{ role: 'user', content: prompt }]
           })

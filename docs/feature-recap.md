@@ -64,8 +64,8 @@ This file is a working inventory of what the Netflix Safari Language Learner cur
 - `Use Netflix subtitles if available`.
 - Translation provider.
 - Provider API key fields where required.
-- Gemini model setting.
-- Grok model setting.
+- Gemini model setting (defaults: `gemini-3.5-flash-lite`, plus 3.1 / 2.5 Flash-Lite options).
+- Grok model setting (defaults: `grok-4.3`; options include 4.5 and 4.20 non-reasoning).
 - Default playback speed.
 - Subtitle font size.
 
@@ -114,36 +114,39 @@ These are currently in the codebase, but are not obviously required by the narro
 
 ## Narrowed Project Contract
 
+**Authoritative ownership:** [`control-ownership-contract.md`](control-ownership-contract.md). If this recap and the contract diverge, the contract wins.
+
 ### Netflix Owns
 
-- Play/pause
 - Fullscreen
-- Native control-panel visibility
-- Native playback keys and clicks
-- Native playback state transitions
+- Native playback controls and keys the extension does not customize
+- Native playback state transitions outside extension-owned playback
+- Native control chrome (as external visual exclusions)
 
-### Extension Owns
+### Extension Owns (during active customized watch playback)
 
+- Play/pause for extension-owned inputs (`space` when enabled, bare video click, `j` / 8BitDo if kept) via one `toggle-playback` path
 - Custom subtitle overlay
 - Clickable original words
 - Translation tooltip
-- Auto-pause
-- Previous subtitle
-- Next subtitle
-- Repeat subtitle
+- Auto-pause (page-timed on the same cue timeline)
+- Previous subtitle / next subtitle / repeat
 - Auto-resume after subtitle navigation
-- Only the settings required for these functions
+- Custom panel buttons and extension-only hotkeys
+- Panel and cursor visibility while playback interception is active
 
 ### Visibility Rules
 
-- Extension controls should only be visible when Netflix native controls are visible.
-- No extra visual effects beyond what is necessary for the learning features.
+- Hot zones reveal controls; visible Netflix control regions keep them usable.
+- Cursor visibility is movement-based and separate from control visibility.
+- Visibility must not attach or detach playback interception.
+- Native control-panel DOM is for visibility / exclusion regions only, not playback activation.
 
 ### Activation Rules
 
-- Playback activation should use Netflix watch-session/player state.
-- DOM mounting should use the Netflix watch-player shell.
-- Native control-panel DOM should be used for visibility only, not playback activation.
+- Playback activation uses Netflix watch-session/player state (`adapter.isWatchPlaybackActive()`).
+- DOM mounting uses the Netflix watch-player shell.
+- Subtitle readiness does not decide watch-session activation.
 
 ## Likely Keep
 
@@ -162,12 +165,12 @@ These are currently in the codebase, but are not obviously required by the narro
 - Extra translation providers, if one provider path is enough
 - Playback speed controls, if not part of the final core scope
 - Retry translation command
-- Extension-owned play/pause path
-- Extra debug/export tooling after stabilization
+- Extra debug/export tooling after stabilization (keep behavior; shrink production surface)
 
-## Undecided
+## Undecided (product, not ownership)
 
-- Whether the top-right custom panel remains as a permanent feature or becomes a thinner UI tied strictly to Netflix controls
-- Whether playback speed stays in scope
-- Whether multi-provider translation stays in scope or is reduced
-- Whether `j` / 8BitDo play/pause stays extension-owned or is fully returned to Netflix semantics
+- Whether the top-right custom panel remains permanent or becomes a thinner scene widget (see overlay rewrite plan)
+- Whether playback speed stays in core scope long term
+- Whether multi-provider translation stays broad or is reduced to free Google + one AI provider
+
+Play/pause during active customized playback remains **extension-owned** per the control-ownership contract until that contract is deliberately revised.

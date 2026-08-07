@@ -168,4 +168,97 @@ describe('translation queue generation guards', () => {
     assert.equal(harness.queue.getEntry(staleKey), null);
     assert.equal(translationCalls, 1);
   });
+
+  test('prefetch looks up multiple cues in parallel and flushes remaining misses', async () => {
+    const lookupOrder = [];
+    let translationCalls = 0;
+    const deferreds = {
+      Moi: createDeferred(),
+      Hei: createDeferred()
+    };
+
+    const harness = loadQueueHarness({
+      databaseClientOverrides: {
+        async getSubtitleTranslation(title, sourceLanguage, targetLanguage, text) {
+          lookupOrder.push(text);
+          return deferreds[text].promise;
+        }
+      },
+      translationApiOverrides: {
+        async fetchBatchTranslation(texts) {
+          translationCalls += 1;
+          return [true, texts.map((text) => `T:${text}`)];
+        }
+      }
+    });
+
+    const prefetchPromise = harness.queue.prefetch({
+      title: 'Show A',
+      cues: [
+        { startTime: 1, endTime: 2, text: 'Moi' },
+        { startTime: 2, endTime: 3, text: 'Hei' }
+      ],
+      sourceLanguage: 'fi'
+    });
+
+    // Both lookups start before either resolves (parallel, not sequential).
+    assert.deepEqual(lookupOrder.slice().sort(), ['Hei', 'Moi']);
+
+    deferreds.Moi.resolve(null);
+    deferreds.Hei.resolve({
+      title: 'Show A',
+      translatedText: 'Hi'
+    });
+
+    await prefetchPromise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const moiKey = harness.languageUtils.toTranslationKey('Show A', 'EN-US', 'Moi');
+    const heiKey = harness.languageUtils.toTranslationKey('Show A', 'EN-US', 'Hei');
+
+    assert.equal(harness.queue.getEntry(heiKey)?.status, 'success');
+    assert.equal(harness.queue.getEntry(heiKey)?.text, 'Hi');
+    assert.equal(harness.queue.getEntry(moiKey)?.status, 'success');
+    assert.equal(harness.queue.getEntry(moiKey)?.text, 'T:Moi');
+    assert.equal(translationCalls, 1);
+  });
+
+  test('chained flush drains more than one batch without orphaning pending entries', async () => {
+    let translationCalls = 0;
+    const harness = loadQueueHarness({
+      translationApiOverrides: {
+        async fetchBatchTranslation(texts) {
+          translationCalls += 1;
+          return [true, texts.map((text) => `T:${text}`)];
+        }
+      }
+    });
+
+    const cues = Array.from({ length: 8 }, (_, index) => ({
+      startTime: index,
+      endTime: index + 1,
+      text: `Line ${index}`
+    }));
+
+    await harness.queue.prefetch({
+      title: 'Show A',
+      cues,
+      sourceLanguage: 'fi'
+    });
+
+    // Allow microtask flush chain (batch size 6 → second flush).
+    for (let i = 0; i < 10; i += 1) {
+      await Promise.resolve();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(translationCalls, 2);
+    cues.forEach((cue) => {
+      const key = harness.languageUtils.toTranslationKey('Show A', 'EN-US', cue.text);
+      const entry = harness.queue.getEntry(key);
+      assert.equal(entry?.status, 'success', `expected success for ${cue.text}`);
+      assert.equal(entry?.text, `T:${cue.text}`);
+    });
+  });
 });

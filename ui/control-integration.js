@@ -1,8 +1,11 @@
 (() => {
   const app = globalThis.NetflixLanguageLearner = globalThis.NetflixLanguageLearner || {};
   const ui = app.ui = app.ui || {};
+  const core = app.core = app.core || {};
   const domUtils = app.domUtils;
   const extensionApi = app.extensionApi;
+  const layoutEngine = core.overlayLayoutEngine;
+  const layoutExclusionStore = core.layoutExclusionStore;
   const HOT_ZONE_TOP_PX = 44;
   const HOT_ZONE_BOTTOM_PX = 48;
   const CURSOR_HIDE_DELAY_MS = 900;
@@ -184,6 +187,10 @@
     }
 
     function isVisibleControlNode(node) {
+      if (domUtils && typeof domUtils.isVisibleElement === 'function') {
+        return domUtils.isVisibleElement(node);
+      }
+
       if (!(node instanceof Element)) {
         return false;
       }
@@ -196,7 +203,6 @@
       const rect = node.getBoundingClientRect();
       return rect.width > 4 && rect.height > 4;
     }
-
     function isWithinVisibleControlRegion(clientX, clientY) {
       if (!mountTarget || typeof mountTarget.querySelectorAll !== 'function') {
         return false;
@@ -245,6 +251,25 @@
       });
     }
 
+    function publishNativeControlExclusions(shouldShowControls) {
+      if (!layoutExclusionStore || typeof layoutExclusionStore.set !== 'function') {
+        return;
+      }
+
+      if (!shouldShowControls) {
+        layoutExclusionStore.set('native-controls', []);
+        return;
+      }
+
+      const playerRect = getPlayerRect();
+      if (!playerRect || !layoutEngine || typeof layoutEngine.computeControlBandExclusions !== 'function') {
+        layoutExclusionStore.set('native-controls', []);
+        return;
+      }
+
+      layoutExclusionStore.set('native-controls', layoutEngine.computeControlBandExclusions(playerRect));
+    }
+
     function syncUi(reason) {
       const shouldShowControls = Boolean(visibilityEnabled && (panelHovered || (controlsVisible && cursorVisible)));
       const shouldShowCursor = Boolean(visibilityEnabled && (panelHovered || cursorVisible));
@@ -265,6 +290,7 @@
         }
       }
 
+      publishNativeControlExclusions(shouldShowControls);
       syncDebugState(reason || (shouldShowControls ? 'controls-visible' : 'controls-hidden'));
     }
 
@@ -675,6 +701,9 @@
         unsubscribeStore();
         if (keyboard) {
           keyboard.detach();
+        }
+        if (layoutExclusionStore && typeof layoutExclusionStore.clear === 'function') {
+          layoutExclusionStore.clear('native-controls');
         }
         unmount();
       }
