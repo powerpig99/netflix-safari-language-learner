@@ -10,12 +10,17 @@ Landed so far:
 - `ui/control-integration.js` publishes native control bands to `core.layoutExclusionStore` when controls are visible
 - Unit tests: `tests/unit/dom-utils.test.js`, `tests/unit/overlay-layout-engine.test.js`
 
+Also done after C2:
+
+- Overlay no longer scans interactive Netflix nodes for collision lift
+- 250ms layout polling removed; layout updates from ResizeObserver, render, and exclusion-store notifications
+- Control integration publishes `native-controls` bands + `extension-panel` rect into the exclusion store
+
 Still open for full rewrite:
 
 - Single overlay scene root owning panel + subtitles + status
 - pretext-owned line layout / clickable word tokens
-- Remove interactive-node DOM scan and 250ms layout polling
-- Remove independent panel CSS geometry ownership
+- Remove independent panel CSS geometry ownership (panel still top/right absolute in CSS)
 
 This document describes a full rewrite of extension display/layout around one extension-owned overlay layer inside the rendered video rect.
 

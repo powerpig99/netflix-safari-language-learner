@@ -77,6 +77,8 @@
     let lastPointerPosition = null;
     let cleanupVisibilityListeners = null;
     let cleanupPlaybackControlListeners = null;
+    let exclusionResizeObserver = null;
+    let observedExclusionTarget = null;
     const rootCursorClass = 'nll-root-cursor-hidden';
     const keyboard = app.core && typeof app.core.createControlKeyboard === 'function'
       ? app.core.createControlKeyboard({
@@ -251,23 +253,89 @@
       });
     }
 
-    function publishNativeControlExclusions(shouldShowControls) {
+    function rectFromElement(element) {
+      if (!(element instanceof Element) || typeof element.getBoundingClientRect !== 'function') {
+        return null;
+      }
+
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 4 || rect.height <= 4) {
+        return null;
+      }
+
+      return {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        right: rect.right,
+        bottom: rect.bottom
+      };
+    }
+
+    function publishLayoutExclusions(shouldShowControls) {
       if (!layoutExclusionStore || typeof layoutExclusionStore.set !== 'function') {
         return;
       }
 
       if (!shouldShowControls) {
         layoutExclusionStore.set('native-controls', []);
+        layoutExclusionStore.set('extension-panel', []);
         return;
       }
 
       const playerRect = getPlayerRect();
-      if (!playerRect || !layoutEngine || typeof layoutEngine.computeControlBandExclusions !== 'function') {
-        layoutExclusionStore.set('native-controls', []);
+      const bands = playerRect && layoutEngine && typeof layoutEngine.computeControlBandExclusions === 'function'
+        ? layoutEngine.computeControlBandExclusions(playerRect)
+        : [];
+      layoutExclusionStore.set('native-controls', bands);
+
+      const panelRect = rectFromElement(panel.element);
+      layoutExclusionStore.set(
+        'extension-panel',
+        panelRect
+          ? [{
+            id: 'extension-control-panel',
+            ...panelRect
+          }]
+          : []
+      );
+    }
+
+    function observeExclusionGeometry() {
+      if (typeof ResizeObserver !== 'function') {
         return;
       }
 
-      layoutExclusionStore.set('native-controls', layoutEngine.computeControlBandExclusions(playerRect));
+      const nextTarget = adapter.getVideo() || mountTarget;
+      if (!nextTarget) {
+        if (exclusionResizeObserver && observedExclusionTarget) {
+          exclusionResizeObserver.unobserve(observedExclusionTarget);
+          observedExclusionTarget = null;
+        }
+        return;
+      }
+
+      if (!exclusionResizeObserver) {
+        exclusionResizeObserver = new ResizeObserver(() => {
+          const shouldShowControls = Boolean(
+            visibilityEnabled && (panelHovered || (controlsVisible && cursorVisible))
+          );
+          if (shouldShowControls) {
+            publishLayoutExclusions(true);
+          }
+        });
+      }
+
+      if (observedExclusionTarget === nextTarget) {
+        return;
+      }
+
+      if (observedExclusionTarget) {
+        exclusionResizeObserver.unobserve(observedExclusionTarget);
+      }
+      observedExclusionTarget = nextTarget;
+      exclusionResizeObserver.observe(nextTarget);
     }
 
     function syncUi(reason) {
@@ -290,7 +358,9 @@
         }
       }
 
-      publishNativeControlExclusions(shouldShowControls);
+      // Publish after visibility class changes so panel metrics match the painted state.
+      publishLayoutExclusions(shouldShowControls);
+      observeExclusionGeometry();
       syncDebugState(reason || (shouldShowControls ? 'controls-visible' : 'controls-hidden'));
     }
 
@@ -636,6 +706,11 @@
       controlsVisible = false;
       cursorVisible = false;
       panelHovered = false;
+      if (exclusionResizeObserver) {
+        exclusionResizeObserver.disconnect();
+        exclusionResizeObserver = null;
+        observedExclusionTarget = null;
+      }
       panel.element.remove();
       mountTarget = null;
     }
@@ -704,6 +779,7 @@
         }
         if (layoutExclusionStore && typeof layoutExclusionStore.clear === 'function') {
           layoutExclusionStore.clear('native-controls');
+          layoutExclusionStore.clear('extension-panel');
         }
         unmount();
       }

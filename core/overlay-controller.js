@@ -25,7 +25,6 @@
     let lastTranslationRenderSignature = '';
     let resizeObserver = null;
     let observedScaleTarget = null;
-    let layoutTimer = null;
     let layoutFrame = null;
 
     function getLayoutRects() {
@@ -58,85 +57,21 @@
       };
     }
 
-    function isVisibleNode(node) {
-      if (domUtils && typeof domUtils.isVisibleElement === 'function') {
-        return domUtils.isVisibleElement(node);
-      }
-
-      if (!(node instanceof Element)) {
-        return false;
-      }
-
-      const style = globalThis.getComputedStyle(node);
-      if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || 1) < 0.05) {
-        return false;
-      }
-
-      const rect = node.getBoundingClientRect();
-      return rect.width > 4 && rect.height > 4;
-    }
     function collectLayoutExclusions(contentRect) {
-      const exclusions = [];
-
+      // Single exclusion path: published store from visibility/panel owners.
+      // Do not re-scan interactive Netflix DOM here — that reintroduces a second
+      // geometry authority and was the old bottom-lift heuristic.
       if (layoutExclusionStore && typeof layoutExclusionStore.getAll === 'function') {
-        layoutExclusionStore.getAll().forEach((rect) => {
-          exclusions.push(rect);
-        });
-      }
-
-      if (mountTarget && typeof mountTarget.querySelectorAll === 'function') {
-        const interactiveNodes = mountTarget.querySelectorAll('button, [role="button"], input, [aria-label], [data-uia]');
-        interactiveNodes.forEach((node) => {
-          if (!(node instanceof Element)) {
-            return;
-          }
-
-          if (node.closest('.nll-overlay, .nll-control-panel, .nll-word-tooltip')) {
-            return;
-          }
-
-          if (!isVisibleNode(node)) {
-            return;
-          }
-
-          const rect = node.getBoundingClientRect();
-          if (rect.width <= 4 || rect.height <= 4) {
-            return;
-          }
-
-          exclusions.push({
-            left: rect.left,
-            top: rect.top,
-            width: rect.width,
-            height: rect.height,
-            right: rect.right,
-            bottom: rect.bottom
-          });
-        });
-
-        const panel = mountTarget.querySelector('.nll-control-panel.is-visible');
-        if (panel instanceof Element && isVisibleNode(panel)) {
-          const panelRect = panel.getBoundingClientRect();
-          if (panelRect.width > 4 && panelRect.height > 4) {
-            exclusions.push({
-              id: 'extension-control-panel',
-              left: panelRect.left,
-              top: panelRect.top,
-              width: panelRect.width,
-              height: panelRect.height,
-              right: panelRect.right,
-              bottom: panelRect.bottom
-            });
-          }
+        const published = layoutExclusionStore.getAll();
+        if (published.length > 0) {
+          return published;
         }
       }
 
-      // Prefer live exclusions; fall back to stable bands only when nothing else is known.
-      if (exclusions.length === 0 && layoutEngine && contentRect) {
-        return layoutEngine.computeControlBandExclusions(contentRect);
-      }
-
-      return exclusions;
+      // When controls are hidden, there are no published bands — use base inset only.
+      // contentRect is accepted for API stability; no implicit band inventing while hidden.
+      void contentRect;
+      return [];
     }
 
     function updateLayoutMetrics() {
@@ -284,12 +219,6 @@
       root.appendChild(surface);
       mountTarget.appendChild(root);
       observeVideoScaleTarget();
-      if (!layoutTimer) {
-        layoutTimer = globalThis.setInterval(() => {
-          requestLayoutUpdate();
-        }, 250);
-      }
-
       return root;
     }
 
@@ -417,10 +346,6 @@
         if (layoutFrame !== null) {
           globalThis.cancelAnimationFrame(layoutFrame);
           layoutFrame = null;
-        }
-        if (layoutTimer) {
-          globalThis.clearInterval(layoutTimer);
-          layoutTimer = null;
         }
       }
     };
