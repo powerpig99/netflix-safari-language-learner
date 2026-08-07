@@ -2546,7 +2546,8 @@
       trackLanguage: null,
       targetLanguage: subtitlePreferences.targetLanguage || null,
       provider: subtitlePreferences.useNetflixTargetSubtitlesIfAvailable ? 'netflix' : null,
-      readyState: subtitlePreferences.useNetflixTargetSubtitlesIfAvailable ? 'waiting-for-track' : 'disabled'
+      readyState: subtitlePreferences.useNetflixTargetSubtitlesIfAvailable ? 'waiting-for-track' : 'disabled',
+      trackFound: false
     };
     let ready = {
       state: 'idle'
@@ -2670,6 +2671,7 @@
       selection.preferredTimedTextTrack = normalizeTrack(preferredTimedTextTrack);
 
       if (preferredTimedTextTrack) {
+        preferredTranslation.trackFound = true;
         preferredTranslation.trackLanguage = preferredTimedTextTrack.language || preferredTimedTextTrack.bcp47 || null;
         preferredTranslation.readyState = 'waiting-for-downloadable';
         const downloadable = resolveSubtitleDownload(preferredTimedTextTrack);
@@ -2703,6 +2705,7 @@
           }
         }
       } else {
+        preferredTranslation.trackFound = false;
         preferredTranslation.readyState = 'track-unavailable';
       }
     }

@@ -58,7 +58,9 @@
         cue: null,
         trackLanguage: null,
         targetLanguage: null,
-        provider: null
+        provider: null,
+        readyState: 'disabled',
+        trackFound: false
       },
       featureAvailability: { ...DEFAULT_FEATURE_AVAILABILITY },
       platformError: null,
@@ -157,6 +159,16 @@
 
     function setPreferredTranslation(preferredTranslation) {
       const nextCue = normalizeCue(preferredTranslation && preferredTranslation.cue);
+      const readyState = preferredTranslation && preferredTranslation.readyState
+        ? String(preferredTranslation.readyState)
+        : 'disabled';
+      const trackFound = Boolean(
+        preferredTranslation && (
+          preferredTranslation.trackFound
+          || preferredTranslation.available
+          || (readyState !== 'disabled' && readyState !== 'track-unavailable')
+        )
+      );
       state = {
         ...state,
         preferredTranslation: {
@@ -170,7 +182,9 @@
             : null,
           provider: preferredTranslation && preferredTranslation.provider
             ? String(preferredTranslation.provider)
-            : null
+            : null,
+          readyState,
+          trackFound
         }
       };
       emit();

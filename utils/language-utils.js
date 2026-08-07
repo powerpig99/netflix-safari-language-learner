@@ -12,7 +12,8 @@
     autoPauseEnabled: false,
     playbackSpeed: 1,
     targetLanguage: 'EN-US',
-    useNetflixTargetSubtitlesIfAvailable: false,
+    // Prefer Netflix human target-language tracks over machine translation.
+    useNetflixTargetSubtitlesIfAvailable: true,
     translationProvider: 'google',
     subtitleFontSize: 'medium',
     googleCloudApiKey: '',

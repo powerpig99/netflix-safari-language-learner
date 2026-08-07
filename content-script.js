@@ -160,16 +160,31 @@
         break;
       case 'activeSubtitleChanged':
         subtitleStore.setActiveCue(event.cue, settings.targetLanguage);
-        if (event.cue && !(
-          settings.useNetflixTargetSubtitlesIfAvailable
-          && typeof adapter.getPreferredTranslation === 'function'
-          && adapter.getPreferredTranslation().available
-        )) {
-          translationQueue.prefetch({
-            title: subtitleStore.getState().title,
-            cues: getCuePrefetchWindow(event.cue, subtitleStore.getState().timeline),
-            sourceLanguage: subtitleStore.getState().sourceLanguage
-          });
+        if (event.cue) {
+          const preferred = typeof adapter.getPreferredTranslation === 'function'
+            ? adapter.getPreferredTranslation()
+            : null;
+          const preferNetflixTargetTrack = Boolean(
+            settings.useNetflixTargetSubtitlesIfAvailable
+            && preferred
+            && (
+              preferred.available
+              || preferred.trackFound
+              || (
+                preferred.readyState
+                && preferred.readyState !== 'disabled'
+                && preferred.readyState !== 'track-unavailable'
+              )
+            )
+          );
+          // Skip machine translation when a Netflix target-language track exists.
+          if (!preferNetflixTargetTrack) {
+            translationQueue.prefetch({
+              title: subtitleStore.getState().title,
+              cues: getCuePrefetchWindow(event.cue, subtitleStore.getState().timeline),
+              sourceLanguage: subtitleStore.getState().sourceLanguage
+            });
+          }
         }
         break;
       case 'preferredTranslationChanged':

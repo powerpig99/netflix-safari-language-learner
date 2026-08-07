@@ -339,19 +339,29 @@
       }
 
       const shouldShowTranslation = settings.dualSubEnabled && settingsStore.shouldTranslate(state.sourceLanguage);
-      const shouldUseNetflixTargetSubtitles = Boolean(
+      const preferred = state.preferredTranslation || {};
+      // Prefer Netflix human target track whenever it exists for this title,
+      // even if the downloadable cue is temporarily missing (do not machine-translate).
+      const preferNetflixTargetTrack = Boolean(
         settings.useNetflixTargetSubtitlesIfAvailable
-        && state.preferredTranslation.available
+        && (
+          preferred.available
+          || preferred.trackFound
+          || (
+            preferred.readyState
+            && preferred.readyState !== 'disabled'
+            && preferred.readyState !== 'track-unavailable'
+          )
+        )
       );
-      const netflixTargetCue = shouldUseNetflixTargetSubtitles
-        ? state.preferredTranslation.cue
-        : null;
+      const netflixTargetCue = preferred.available ? preferred.cue : null;
       const translationEntry = state.activeSubtitle.translationKey
         ? translationQueue.getEntry(state.activeSubtitle.translationKey)
         : null;
       const renderSignature = JSON.stringify([
         shouldShowTranslation,
-        shouldUseNetflixTargetSubtitles,
+        preferNetflixTargetTrack,
+        preferred.readyState || null,
         netflixTargetCue?.text || null,
         state.activeSubtitle.translationKey,
         translationEntry?.status || null,
@@ -364,7 +374,8 @@
         traceTranslation('overlay:render', {
           translationKey: state.activeSubtitle.translationKey,
           shouldShowTranslation,
-          shouldUseNetflixTargetSubtitles,
+          preferNetflixTargetTrack,
+          preferredReadyState: preferred.readyState || null,
           netflixTargetText: netflixTargetCue?.text || null,
           entryStatus: translationEntry?.status || null,
           entryText: translationEntry?.text || null,
@@ -380,11 +391,13 @@
         if (netflixTargetCue && netflixTargetCue.text) {
           translatedLine.textContent = netflixTargetCue.text;
           translatedLine.dataset.state = 'netflix';
-        } else if (shouldUseNetflixTargetSubtitles) {
-          // Reserve layout slot so the original line does not jump.
+        } else if (preferNetflixTargetTrack) {
+          // Netflix track exists: reserve the second line, never fall back to machine translation.
           translatedLine.hidden = false;
           translatedLine.textContent = '\u00a0';
-          translatedLine.dataset.state = 'netflix-unavailable';
+          translatedLine.dataset.state = preferred.readyState === 'waiting-for-downloadable'
+            ? 'netflix-loading'
+            : 'netflix-unavailable';
         } else if (!hasOriginalCue) {
           // Never show a perpetual "Translating..." with no original line.
           translatedLine.hidden = true;

@@ -38,9 +38,25 @@
     }
 
     async function load() {
-      const keys = Object.keys(languageUtils.DEFAULT_SETTINGS);
+      const keys = Object.keys(languageUtils.DEFAULT_SETTINGS).concat([
+        'useNetflixTargetSubtitlesMigratedV1'
+      ]);
       const storedValues = await extensionApi.storage.get(keys);
       applyPatch(storedValues);
+
+      // One-time migration: old default was false; prefer Netflix target tracks.
+      if (!storedValues.useNetflixTargetSubtitlesMigratedV1) {
+        const migrationPatch = {
+          useNetflixTargetSubtitlesIfAvailable: true,
+          useNetflixTargetSubtitlesMigratedV1: true
+        };
+        applyPatch(migrationPatch);
+        try {
+          await extensionApi.storage.set(migrationPatch);
+        } catch (error) {
+          console.warn('NetflixLanguageLearner: Failed to persist Netflix-subtitles migration:', error);
+        }
+      }
 
       if (typeof languageUtils.migrateModelSettings === 'function') {
         const modelPatch = languageUtils.migrateModelSettings(state);

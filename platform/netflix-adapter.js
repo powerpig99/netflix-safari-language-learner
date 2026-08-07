@@ -109,7 +109,9 @@
       cue: null,
       trackLanguage: null,
       targetLanguage: null,
-      provider: null
+      provider: null,
+      readyState: 'disabled',
+      trackFound: false
     };
 
     function emit(type, detail = {}) {
@@ -344,7 +346,9 @@
         cue: null,
         trackLanguage: null,
         targetLanguage: null,
-        provider: null
+        provider: null,
+        readyState: 'disabled',
+        trackFound: false
       };
       emit('captionsChanged', { enabled: false });
       emit('timelineReady', { timeline: [] });
@@ -418,14 +422,28 @@
               : null,
             provider: payload.preferredTranslation.provider
               ? String(payload.preferredTranslation.provider)
-              : null
+              : null,
+            readyState: payload.preferredTranslation.readyState
+              ? String(payload.preferredTranslation.readyState)
+              : 'disabled',
+            trackFound: Boolean(
+              payload.preferredTranslation.trackFound
+              || payload.preferredTranslation.available
+              || (
+                payload.preferredTranslation.readyState
+                && payload.preferredTranslation.readyState !== 'disabled'
+                && payload.preferredTranslation.readyState !== 'track-unavailable'
+              )
+            )
           }
         : {
             available: false,
             cue: null,
             trackLanguage: null,
             targetLanguage: null,
-            provider: null
+            provider: null,
+            readyState: 'disabled',
+            trackFound: false
           };
       const nextActiveCue = findCueAtTime(nextTimeline, nextCurrentTime) || (
         payload.activeCue && typeof payload.activeCue === 'object'
@@ -445,6 +463,8 @@
         || preferredTranslation.trackLanguage !== nextPreferredTranslation.trackLanguage
         || preferredTranslation.targetLanguage !== nextPreferredTranslation.targetLanguage
         || preferredTranslation.provider !== nextPreferredTranslation.provider
+        || preferredTranslation.readyState !== nextPreferredTranslation.readyState
+        || preferredTranslation.trackFound !== nextPreferredTranslation.trackFound
         || !cuesEqual(preferredTranslation.cue, nextPreferredTranslation.cue);
 
       timeline = nextTimeline;
