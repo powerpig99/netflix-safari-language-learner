@@ -88,17 +88,57 @@
     }
 
     function getCuePrefetchWindow(activeCue, timeline) {
-      if (!activeCue || !Array.isArray(timeline) || timeline.length === 0) {
+      // Rendered-DOM cues often arrive before a stable timeline history exists.
+      // Always translate at least the active cue when present.
+      if (!activeCue || !activeCue.text) {
         return [];
       }
 
+      if (!Array.isArray(timeline) || timeline.length === 0) {
+        return [activeCue];
+      }
+
       const index = timeline.findIndex((cue) => {
-        return cue.startTime === activeCue.startTime && cue.endTime === activeCue.endTime && cue.text === activeCue.text;
+        return cue.text === activeCue.text
+          && Math.abs(Number(cue.startTime) - Number(activeCue.startTime)) < 0.2;
       });
       if (index < 0) {
         return [activeCue];
       }
       return timeline.slice(index, index + 5);
+    }
+
+    function requestCueTranslation(cue) {
+      if (!cue || !cue.text) {
+        return;
+      }
+
+      const settings = settingsStore.get();
+      if (!settings.dualSubEnabled || !settings.extensionEnabled) {
+        return;
+      }
+
+      const preferred = typeof adapter.getPreferredTranslation === 'function'
+        ? adapter.getPreferredTranslation()
+        : null;
+      // Skip machine translation only when Netflix already provided target-line text.
+      const hasNetflixTargetText = Boolean(
+        settings.useNetflixTargetSubtitlesIfAvailable
+        && preferred
+        && preferred.available
+        && preferred.cue
+        && preferred.cue.text
+      );
+      if (hasNetflixTargetText) {
+        return;
+      }
+
+      const state = subtitleStore.getState();
+      translationQueue.prefetch({
+        title: state.title || adapter.getTitle() || document.title || 'Netflix',
+        cues: getCuePrefetchWindow(cue, state.timeline),
+        sourceLanguage: state.sourceLanguage || 'auto'
+      });
     }
 
     function syncFromAdapter(targetLanguage) {
@@ -165,26 +205,7 @@
         // Dual-subs are live: never keep a hydration warning between subtitle lines.
         if (event.cue) {
           subtitleStore.setPlatformError(null);
-        }
-        if (event.cue) {
-          const preferred = typeof adapter.getPreferredTranslation === 'function'
-            ? adapter.getPreferredTranslation()
-            : null;
-          // Skip machine translation only when Netflix already provided target-line text.
-          const hasNetflixTargetText = Boolean(
-            settings.useNetflixTargetSubtitlesIfAvailable
-            && preferred
-            && preferred.available
-            && preferred.cue
-            && preferred.cue.text
-          );
-          if (!hasNetflixTargetText) {
-            translationQueue.prefetch({
-              title: subtitleStore.getState().title,
-              cues: getCuePrefetchWindow(event.cue, subtitleStore.getState().timeline),
-              sourceLanguage: subtitleStore.getState().sourceLanguage
-            });
-          }
+          requestCueTranslation(event.cue);
         }
         break;
       case 'preferredTranslationChanged':

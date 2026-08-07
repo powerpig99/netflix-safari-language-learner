@@ -383,13 +383,6 @@
         if (netflixTargetCue && netflixTargetCue.text) {
           translatedLine.textContent = netflixTargetCue.text;
           translatedLine.dataset.state = 'netflix';
-        } else if (preferNetflixTargetTrack) {
-          // Netflix track exists: reserve the second line, never fall back to machine translation.
-          translatedLine.hidden = false;
-          translatedLine.textContent = '\u00a0';
-          translatedLine.dataset.state = preferred.readyState === 'waiting-for-downloadable'
-            ? 'netflix-loading'
-            : 'netflix-unavailable';
         } else if (!hasOriginalCue) {
           // Never show a perpetual "Translating..." with no original line.
           translatedLine.hidden = true;

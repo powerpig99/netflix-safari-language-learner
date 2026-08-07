@@ -22,14 +22,17 @@
     function applyPatch(patch) {
       let changed = false;
       Object.entries(patch || {}).forEach(([key, value]) => {
-        if (!(key in state)) {
+        // Allow one-time migration flags that are not product settings.
+        if (!(key in state) && !key.endsWith('MigratedV1')) {
           return;
         }
-        if (state[key] === value) {
+        if (key in state && state[key] === value) {
           return;
         }
-        state[key] = value;
-        changed = true;
+        if (key in state) {
+          state[key] = value;
+          changed = true;
+        }
       });
       if (changed) {
         emit();
