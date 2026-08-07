@@ -14,7 +14,14 @@
   const NETFLIX_PLAYER_TIME_SCALE = 1000;
   const SUBTITLE_PROFILE = 'webvtt-lssdh-ios8';
   const SUBTITLE_PROFILE_PREFERENCES = [
-    'webvtt-lssdh-ios8'
+    'webvtt-lssdh-ios8',
+    'webvtt-lssdh-ios8-dash',
+    'dfxp-ls-sdh',
+    'dfxp-ls',
+    'imsc1.1',
+    'imsc1',
+    'simplesdh',
+    'nflx-cmisc'
   ];
   const PLAYER_METHOD_NAMES = [
     'getTimedTextTrackList',
@@ -44,10 +51,14 @@
     patchCount: 0,
     inspectCount: 0,
     candidateCount: 0,
+    reinstallCount: 0,
+    forceReselectCount: 0,
     lastPatchedRequest: null,
     lastCandidate: null,
     lastNearMiss: null
   };
+  const forceHydrationAttemptedMovieIds = new Set();
+  let patchWatchdogTimer = null;
   const debugState = {
     probe: null,
     manifest: null,
@@ -1390,6 +1401,59 @@
     return cloned;
   }
 
+  function applyHydrationToObject(value) {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+
+    // LR path works on the object after a stringify/parse cycle so nested
+    // params stay mutable. Mutate in place when we already have an object.
+    let target = null;
+    if (value.params && typeof value.params === 'object' && !Array.isArray(value.params)) {
+      target = value;
+    } else {
+      target = findHydrationParams(value);
+    }
+
+    if (!target || !target.params || typeof target.params !== 'object') {
+      return false;
+    }
+
+    const params = target.params;
+    const hasSupportsPartialHydrationKey = Object.prototype.hasOwnProperty.call(params, 'supportsPartialHydration');
+    const hasProfiles = Array.isArray(params.profiles);
+    if (!hasSupportsPartialHydrationKey && !hasProfiles) {
+      return false;
+    }
+
+    let modified = false;
+    if (params.supportsPartialHydration !== true) {
+      params.supportsPartialHydration = true;
+      modified = true;
+    }
+    if (params.showAllSubDubTracks !== true) {
+      params.showAllSubDubTracks = true;
+      modified = true;
+    }
+    if (hasProfiles && !params.profiles.includes(SUBTITLE_PROFILE)) {
+      params.profiles = params.profiles.concat(SUBTITLE_PROFILE);
+      modified = true;
+    }
+
+    if (modified) {
+      requestHydrationDebug.patchCount += 1;
+      requestHydrationDebug.candidateCount += 1;
+      requestHydrationDebug.lastPatchedRequest = {
+        patchCount: requestHydrationDebug.patchCount,
+        path: 'object-mutate',
+        profileCount: Array.isArray(params.profiles) ? params.profiles.length : 0,
+        modified: true
+      };
+    }
+
+    return modified;
+  }
+
   function hydrateRequestBody(body) {
     if (typeof body !== 'string' || !body) {
       return null;
@@ -1407,10 +1471,19 @@
     }
   }
 
-  JSON.stringify = function patchedJsonStringify() {
+  function patchedJsonStringify() {
     const args = Array.from(arguments);
     if (typeof args[0] === 'undefined') {
       return originalJsonStringify.apply(this, args);
+    }
+
+    // Mutate plain objects before stringify (covers LR-style object payload).
+    if (args[0] && typeof args[0] === 'object') {
+      try {
+        applyHydrationToObject(args[0]);
+      } catch (_error) {
+        // ignore
+      }
     }
 
     const originalJsonValue = originalJsonStringify.apply(this, args);
@@ -1420,18 +1493,36 @@
     }
 
     return originalJsonValue;
-  };
+  }
+
+  function installJsonAndNetworkPatches() {
+    if (JSON.stringify !== patchedJsonStringify) {
+      JSON.stringify = patchedJsonStringify;
+      requestHydrationDebug.reinstallCount += 1;
+    }
+  }
+
+  installJsonAndNetworkPatches();
 
   // Netflix may send manifest requests via fetch/XHR without going through a
   // stringify of a plain object we can re-order (body already a string).
-  if (typeof globalThis.fetch === 'function') {
+  if (typeof globalThis.fetch === 'function' && !globalThis.fetch.__nllPatched) {
     const originalFetch = globalThis.fetch.bind(globalThis);
-    globalThis.fetch = function patchedFetch(input, init) {
+    function patchedFetch(input, init) {
+      installJsonAndNetworkPatches();
       let nextInit = init;
       if (init && typeof init.body === 'string') {
         const hydratedBody = hydrateRequestBody(init.body);
         if (hydratedBody && hydratedBody !== init.body) {
           nextInit = Object.assign({}, init, { body: hydratedBody });
+        }
+      } else if (init && init.body && typeof init.body === 'object' && !(init.body instanceof FormData)
+        && !(typeof Blob !== 'undefined' && init.body instanceof Blob)
+        && !(typeof ArrayBuffer !== 'undefined' && init.body instanceof ArrayBuffer)) {
+        try {
+          applyHydrationToObject(init.body);
+        } catch (_error) {
+          // ignore
         }
       }
 
@@ -1441,10 +1532,13 @@
           const contentType = response.headers && response.headers.get
             ? (response.headers.get('content-type') || '')
             : '';
-          if (contentType.includes('json') && typeof response.clone === 'function') {
-            response.clone().json().then((value) => {
+          if ((contentType.includes('json') || contentType.includes('text') || !contentType)
+            && typeof response.clone === 'function') {
+            response.clone().text().then((text) => {
               try {
-                captureManifestCandidate(value);
+                if (text && (text.includes('timedtexttracks') || text.includes('textTracks') || text.includes('ttDownloadables'))) {
+                  captureManifestCandidate(originalJsonParse(text));
+                }
               } catch (_error) {
                 // ignore
               }
@@ -1455,21 +1549,144 @@
         }
         return response;
       });
-    };
+    }
+    patchedFetch.__nllPatched = true;
+    globalThis.fetch = patchedFetch;
   }
 
-  if (typeof XMLHttpRequest !== 'undefined' && XMLHttpRequest.prototype) {
+  if (typeof XMLHttpRequest !== 'undefined' && XMLHttpRequest.prototype
+    && !XMLHttpRequest.prototype.send.__nllPatched) {
     const originalSend = XMLHttpRequest.prototype.send;
-    XMLHttpRequest.prototype.send = function patchedXhrSend(body) {
+    function patchedXhrSend(body) {
+      installJsonAndNetworkPatches();
       let nextBody = body;
       if (typeof body === 'string') {
         const hydratedBody = hydrateRequestBody(body);
         if (hydratedBody) {
           nextBody = hydratedBody;
         }
+      } else if (body && typeof body === 'object') {
+        try {
+          applyHydrationToObject(body);
+        } catch (_error) {
+          // ignore
+        }
       }
       return originalSend.call(this, nextBody);
-    };
+    }
+    patchedXhrSend.__nllPatched = true;
+    XMLHttpRequest.prototype.send = patchedXhrSend;
+  }
+
+  // Netflix (or another script) may replace JSON.stringify after load. Keep ours.
+  if (!patchWatchdogTimer) {
+    let watchdogTicks = 0;
+    patchWatchdogTimer = globalThis.setInterval(() => {
+      watchdogTicks += 1;
+      installJsonAndNetworkPatches();
+      if (watchdogTicks > 240 || requestHydrationDebug.patchCount > 0) {
+        // ~60s at 250ms, or stop once we know patches are landing.
+        if (watchdogTicks > 240) {
+          globalThis.clearInterval(patchWatchdogTimer);
+          patchWatchdogTimer = null;
+        }
+      }
+    }, 250);
+  }
+
+  function tryForceHydrationViaTrackReselect(movieId, sessionPlayer, activeTrack) {
+    if (!movieId || !sessionPlayer || forceHydrationAttemptedMovieIds.has(movieId)) {
+      return;
+    }
+
+    if (typeof sessionPlayer.setTimedTextTrack !== 'function'
+      || typeof sessionPlayer.getTimedTextTrackList !== 'function') {
+      return;
+    }
+
+    forceHydrationAttemptedMovieIds.add(movieId);
+    requestHydrationDebug.forceReselectCount += 1;
+    installJsonAndNetworkPatches();
+
+    const listResult = unwrapResult(safeCall(() => sessionPlayer.getTimedTextTrackList()));
+    const tracks = Array.isArray(listResult.value) ? listResult.value : [];
+    const noneTrack = tracks.find((track) => track && track.isNoneTrack) || null;
+    const restoreTrack = activeTrack || tracks.find((track) => track && !track.isNoneTrack && !track.isForcedNarrative) || null;
+
+    try {
+      if (noneTrack) {
+        safeCall(() => sessionPlayer.setTimedTextTrack(noneTrack));
+      }
+    } catch (_error) {
+      // ignore
+    }
+
+    globalThis.setTimeout(() => {
+      installJsonAndNetworkPatches();
+      try {
+        if (restoreTrack) {
+          safeCall(() => sessionPlayer.setTimedTextTrack(restoreTrack));
+        }
+      } catch (_error) {
+        // ignore
+      }
+      scheduleRefresh('force-hydration-reselect');
+    }, 700);
+  }
+
+  function tryTimelineFromDomTextTracks() {
+    const videos = Array.from(document.querySelectorAll('video'));
+    for (let index = 0; index < videos.length; index += 1) {
+      const video = videos[index];
+      const textTracks = video?.textTracks;
+      if (!textTracks || !textTracks.length) {
+        continue;
+      }
+
+      for (let trackIndex = 0; trackIndex < textTracks.length; trackIndex += 1) {
+        const track = textTracks[trackIndex];
+        if (!track || track.kind === 'metadata') {
+          continue;
+        }
+
+        // Prefer showing/hidden tracks that already carry cues.
+        const cueList = track.cues;
+        if (!cueList || !cueList.length) {
+          continue;
+        }
+
+        const timeline = [];
+        for (let cueIndex = 0; cueIndex < cueList.length; cueIndex += 1) {
+          const cue = cueList[cueIndex];
+          if (!cue || !Number.isFinite(cue.startTime) || !Number.isFinite(cue.endTime)) {
+            continue;
+          }
+          const text = String(cue.text || '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (!text) {
+            continue;
+          }
+          timeline.push({
+            startTime: cue.startTime,
+            endTime: cue.endTime,
+            text
+          });
+        }
+
+        if (timeline.length > 0) {
+          timeline.sort((left, right) => left.startTime - right.startTime);
+          return {
+            timeline,
+            sourceLanguage: track.language || 'en',
+            timelineKey: `dom-texttracks:${track.language || 'unk'}:${timeline.length}`
+          };
+        }
+      }
+    }
+
+    return null;
   }
 
   function countHydratedTimedTextTracks(manifest) {
@@ -1500,22 +1717,57 @@
     return Array.from(profiles).sort();
   }
 
+  function isHttpUrl(value) {
+    return typeof value === 'string' && (/^https?:\/\//i.test(value) || value.startsWith('//'));
+  }
+
   function getUrlsForDownloadable(downloadable) {
     if (!downloadable || typeof downloadable !== 'object') {
       return [];
     }
 
+    const found = [];
+
     if (downloadable.downloadUrls && typeof downloadable.downloadUrls === 'object') {
-      return Object.values(downloadable.downloadUrls).filter((value) => typeof value === 'string' && value);
+      Object.values(downloadable.downloadUrls).forEach((value) => {
+        if (isHttpUrl(value)) {
+          found.push(value.startsWith('//') ? `https:${value}` : value);
+        }
+      });
     }
 
     if (Array.isArray(downloadable.urls)) {
-      return downloadable.urls
-        .map((entry) => entry?.url)
-        .filter((value) => typeof value === 'string' && value);
+      downloadable.urls.forEach((entry) => {
+        const value = typeof entry === 'string' ? entry : entry?.url;
+        if (isHttpUrl(value)) {
+          found.push(value.startsWith('//') ? `https:${value}` : value);
+        }
+      });
     }
 
-    return [];
+    ['url', 'cdnUrl', 'downloadUrl', 'href', 'location'].forEach((key) => {
+      const value = downloadable[key];
+      if (isHttpUrl(value)) {
+        found.push(value.startsWith('//') ? `https:${value}` : value);
+      }
+    });
+
+    // Last resort: one-level deep scan for URL-like strings.
+    if (found.length === 0) {
+      Object.values(downloadable).forEach((value) => {
+        if (isHttpUrl(value)) {
+          found.push(value.startsWith('//') ? `https:${value}` : value);
+        } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+          Object.values(value).forEach((nested) => {
+            if (isHttpUrl(nested)) {
+              found.push(nested.startsWith('//') ? `https:${nested}` : nested);
+            }
+          });
+        }
+      });
+    }
+
+    return Array.from(new Set(found));
   }
 
   function getPreferredSubtitleProfiles(track) {
@@ -1703,7 +1955,7 @@
     if (!downloadable.url) {
       return {
         cacheKey,
-        error: 'Subtitle manifest is present, but no WebVTT download URL is available yet.',
+        error: `Subtitle manifest is present, but no downloadable subtitle URL is available yet (profile: ${downloadable.profile || 'none'}).`,
         timeline: []
       };
     }
@@ -1944,11 +2196,11 @@
     if (ready.state === 'waiting-for-downloadable') {
       const lastPatch = requestHydration?.lastPatchedRequest || null;
       const patchCount = Number(requestHydration?.patchCount || 0);
-      const patchSummary = patchCount > 0
-        ? ` Request patches: ${patchCount}, profiles seen: ${lastPatch?.hadProfiles ? 'yes' : 'no'}.`
-        : ' Request patches: 0.';
+      const reinstallCount = Number(requestHydration?.reinstallCount || 0);
+      const forceReselectCount = Number(requestHydration?.forceReselectCount || 0);
+      const patchSummary = ` Patches: ${patchCount}, reinstalls: ${reinstallCount}, force-reselects: ${forceReselectCount}, path: ${lastPatch?.path || lastPatch?.lrStyle || 'none'}.`;
       const profileSummary = selection.downloadable?.availableProfiles?.length
-        ? ` Available profiles: ${selection.downloadable.availableProfiles.slice(0, 4).join(', ')}.`
+        ? ` Available profiles: ${selection.downloadable.availableProfiles.slice(0, 6).join(', ')}.`
         : '';
       return {
         stage: 'manifest-captured-no-download-url',
@@ -2045,6 +2297,18 @@
     const manifest = resolveManifest(movieId, context.sessionPlayer);
     const activeTimedTextTrack = probe.activeTimedTextTrack;
 
+    // If we have an unhydrated manifest, force one track reselect so Netflix
+    // re-requests timed text while our LR-style stringify/fetch patches are live.
+    if (
+      movieId
+      && manifest
+      && countHydratedTimedTextTracks(manifest) === 0
+      && activeTimedTextTrack
+      && !activeTimedTextTrack.isNoneTrack
+    ) {
+      tryForceHydrationViaTrackReselect(movieId, context.sessionPlayer, activeTimedTextTrack);
+    }
+
     const selection = {
       movieId,
       activeTimedTextTrack
@@ -2131,6 +2395,28 @@
     if (!activeTimelineSelection) {
       clearTimelineResolutionState(activeTimelineResolution);
       selection.activeTimelineSelection = null;
+    }
+
+    // Last-resort timing source: native HTML textTracks if Netflix already
+    // loaded cues into the media element (common while native subs are shown).
+    if (ready.state !== 'deterministic-subtitles-ready') {
+      const domTimeline = tryTimelineFromDomTextTracks();
+      if (domTimeline && domTimeline.timeline.length > 0) {
+        timeline = domTimeline.timeline;
+        timelineKey = domTimeline.timelineKey;
+        sourceLanguage = domTimeline.sourceLanguage || sourceLanguage;
+        captionsEnabled = true;
+        const currentTime = Number(probe.currentTime);
+        activeCue = findCueAtTime(timeline, currentTime);
+        ready = {
+          state: 'deterministic-subtitles-ready',
+          cueCount: timeline.length,
+          timelineKey,
+          currentTime: Number.isFinite(currentTime) ? currentTime : null,
+          source: 'dom-texttracks'
+        };
+        selection.timelineSource = 'dom-texttracks';
+      }
     }
 
     if (subtitlePreferences.useNetflixTargetSubtitlesIfAvailable && manifest) {
