@@ -1059,14 +1059,28 @@
     }
     visited.add(value);
 
-    // LR shape: { result: { movieId, timedtexttracks: [...] } }
-    if (value.result && typeof value.result === 'object' && Array.isArray(value.result.timedtexttracks)) {
-      storeManifest(value.result, 'json-result');
+    // LR shape: { result: { movieId, timedtexttracks|textTracks: [...] } }
+    if (value.result && typeof value.result === 'object') {
+      const result = value.result;
+      if (Array.isArray(result.timedtexttracks)) {
+        storeManifest(result, 'json-result-timedtexttracks');
+      } else if (Array.isArray(result.textTracks)) {
+        // LR also accepts textTracks alias; normalize to timedtexttracks for our cache.
+        storeManifest({
+          ...result,
+          timedtexttracks: result.textTracks
+        }, 'json-result-textTracks');
+      }
     }
 
     // Direct manifest object.
     if (Array.isArray(value.timedtexttracks) && value.movieId != null) {
       storeManifest(value, 'json-direct');
+    } else if (Array.isArray(value.textTracks) && value.movieId != null) {
+      storeManifest({
+        ...value,
+        timedtexttracks: value.textTracks
+      }, 'json-direct-textTracks');
     }
 
     // Nested under common Netflix response wrappers.
@@ -1247,6 +1261,8 @@
       || lower.includes('showalltimedtexttracks')
       || lower.includes('webvtt')
       || lower.includes('timedtext')
+      || lower.includes('viewableid')
+      || lower.includes('movieid')
     )) {
       return null;
     }
@@ -1264,7 +1280,15 @@
       return null;
     }
 
-    const target = findHydrationParams(cloned);
+    // Primary target: LR-style root object with params.
+    // Fallback: nested params discovered by walk.
+    let target = null;
+    if (cloned.params && typeof cloned.params === 'object' && !Array.isArray(cloned.params)) {
+      target = cloned;
+    } else {
+      target = findHydrationParams(cloned);
+    }
+
     if (!target || !target.params || typeof target.params !== 'object') {
       requestHydrationDebug.lastNearMiss = {
         reason: 'no-params-candidate',
@@ -1274,62 +1298,77 @@
       return null;
     }
 
-    requestHydrationDebug.candidateCount += 1;
-    requestHydrationDebug.lastCandidate = {
-      keys: Object.keys(target.params).slice(0, 20),
-      profileCount: Array.isArray(target.params.profiles) ? target.params.profiles.length : 0,
-      hasLanguages: Array.isArray(target.languages),
-      hasSupportsPartialHydration: Object.prototype.hasOwnProperty.call(target.params, 'supportsPartialHydration'),
-      hasShowAllSubDubTracks: Object.prototype.hasOwnProperty.call(target.params, 'showAllSubDubTracks')
-    };
+    const params = target.params;
+    const hasSupportsPartialHydrationKey = Object.prototype.hasOwnProperty.call(params, 'supportsPartialHydration');
+    const hasProfiles = Array.isArray(params.profiles);
+    const hasLanguages = Array.isArray(target.languages) && target.languages.length > 0;
 
-    const profiles = Array.isArray(target.params.profiles) ? target.params.profiles.slice() : [];
-    const hasProfiles = profiles.length > 0;
-    if (!hasProfiles && !requestHydrationDebug.lastCandidate.hasSupportsPartialHydration
-      && !requestHydrationDebug.lastCandidate.hasShowAllSubDubTracks
-      && !requestHydrationDebug.lastCandidate.hasLanguages) {
+    // LR match (exact): either supportsPartialHydration key exists OR params.profiles exists.
+    // Anything else is a near-miss for diagnostics.
+    if (!hasSupportsPartialHydrationKey && !hasProfiles) {
       requestHydrationDebug.lastNearMiss = {
-        reason: 'params-without-media-signals',
-        ...requestHydrationDebug.lastCandidate
+        reason: 'params-without-lr-keys',
+        keys: Object.keys(params).slice(0, 24),
+        inspectCount: requestHydrationDebug.inspectCount
       };
       return null;
     }
 
+    requestHydrationDebug.candidateCount += 1;
+    requestHydrationDebug.lastCandidate = {
+      keys: Object.keys(params).slice(0, 24),
+      profileCount: hasProfiles ? params.profiles.length : 0,
+      hasLanguages,
+      hasSupportsPartialHydrationKey,
+      hasProfiles
+    };
+
     let modified = false;
 
-    if (target.params.supportsPartialHydration !== true) {
-      target.params.supportsPartialHydration = true;
-      modified = true;
+    // LR branch 1: force hydration + show-all flags when the key is present
+    // (or when profiles are present — Safari sometimes omits the boolean key).
+    if (hasSupportsPartialHydrationKey || hasProfiles) {
+      if (params.supportsPartialHydration !== true) {
+        params.supportsPartialHydration = true;
+        modified = true;
+      }
+      if (params.showAllSubDubTracks !== true) {
+        params.showAllSubDubTracks = true;
+        modified = true;
+      }
+      if (Object.prototype.hasOwnProperty.call(params, 'showAllTimedTextTracks')
+        && params.showAllTimedTextTracks !== true) {
+        params.showAllTimedTextTracks = true;
+        modified = true;
+      }
     }
 
-    if (target.params.showAllSubDubTracks !== true) {
-      target.params.showAllSubDubTracks = true;
-      modified = true;
-    }
-
-    // Some Netflix builds use this alternate visibility flag.
-    if (Object.prototype.hasOwnProperty.call(target.params, 'showAllTimedTextTracks')
-      && target.params.showAllTimedTextTracks !== true) {
-      target.params.showAllTimedTextTracks = true;
-      modified = true;
-    }
-
-    if (hasProfiles && !profiles.includes(SUBTITLE_PROFILE)) {
-      target.params.profiles = profiles.concat(SUBTITLE_PROFILE);
-      modified = true;
-    } else if (!hasProfiles) {
-      // Force a minimal profile list so Netflix returns downloadable WebVTT.
-      target.params.profiles = [SUBTITLE_PROFILE];
-      modified = true;
+    // LR branch 2: always push WebVTT profile when profiles array exists.
+    // LR pushes unconditionally (even if already present); we push once.
+    if (hasProfiles) {
+      if (!params.profiles.includes(SUBTITLE_PROFILE)) {
+        params.profiles = params.profiles.concat(SUBTITLE_PROFILE);
+        modified = true;
+      }
+      // Mirror LR: even if already present, count as a successful patch path.
+      if (!modified && params.profiles.includes(SUBTITLE_PROFILE)
+        && params.supportsPartialHydration === true
+        && params.showAllSubDubTracks === true) {
+        requestHydrationDebug.patchCount += 1;
+        requestHydrationDebug.lastPatchedRequest = {
+          patchCount: requestHydrationDebug.patchCount,
+          alreadyHydrated: true,
+          profileCount: params.profiles.length,
+          hasLanguages
+        };
+        return null;
+      }
     }
 
     if (!modified) {
-      // Already fully hydrated flags — still count as a hit so diagnostics are honest.
-      requestHydrationDebug.patchCount += 1;
-      requestHydrationDebug.lastPatchedRequest = {
-        patchCount: requestHydrationDebug.patchCount,
-        alreadyHydrated: true,
-        profileCount: Array.isArray(target.params.profiles) ? target.params.profiles.length : 0
+      requestHydrationDebug.lastNearMiss = {
+        reason: 'matched-but-no-change',
+        ...requestHydrationDebug.lastCandidate
       };
       return null;
     }
@@ -1338,9 +1377,15 @@
     requestHydrationDebug.lastPatchedRequest = {
       patchCount: requestHydrationDebug.patchCount,
       alreadyHydrated: false,
-      profileCount: Array.isArray(target.params.profiles) ? target.params.profiles.length : 0,
-      forcedProfiles: !hasProfiles
+      profileCount: Array.isArray(params.profiles) ? params.profiles.length : 0,
+      hasLanguages,
+      lrStyle: hasSupportsPartialHydrationKey || hasProfiles
     };
+
+    // LR also keeps languages array reference when present.
+    if (hasLanguages) {
+      // no-op keep: presence is the signal Netflix uses for multi-language hydration
+    }
 
     return cloned;
   }
