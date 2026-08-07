@@ -65,7 +65,6 @@ Manual smoke: [`tests/manual/smoke-checklist.md`](tests/manual/smoke-checklist.m
 
 ## Next steps
 
-1. Reliability: coalesce adapter DOM scanning; harden translation-queue async state.
-2. Overlay rewrite: single geometry owner ([`docs/overlay-layer-rewrite-plan.md`](docs/overlay-layer-rewrite-plan.md)).
-3. Slim debug/trace surface in `content-script.js`.
-4. Broader unit coverage for navigation, auto-pause, and adapter events.
+1. Safari smoke on scene-owned panel + subtitle placement (fullscreen, control chrome visible/hidden).
+2. Optional: pretext line layout only after a vendored/browser build decision ([`docs/overlay-layer-rewrite-plan.md`](docs/overlay-layer-rewrite-plan.md)).
+3. Broader unit coverage for auto-pause and adapter events.

@@ -69,6 +69,7 @@
     });
 
     let mountTarget = null;
+    let panelMountHost = null;
     let visibilityEnabled = true;
     let panelHovered = false;
     let controlsVisible = false;
@@ -79,6 +80,7 @@
     let cleanupPlaybackControlListeners = null;
     let exclusionResizeObserver = null;
     let observedExclusionTarget = null;
+    let unsubscribeScene = null;
     const rootCursorClass = 'nll-root-cursor-hidden';
     const keyboard = app.core && typeof app.core.createControlKeyboard === 'function'
       ? app.core.createControlKeyboard({
@@ -695,10 +697,25 @@
       }
     }
 
+    function resolvePanelMountHost(shell) {
+      const scene = core.overlayScene;
+      if (scene && typeof scene.getHost === 'function') {
+        const host = scene.getHost();
+        if (host) {
+          return host;
+        }
+      }
+      return shell;
+    }
+
     function unmount() {
       if (cleanupVisibilityListeners) {
         cleanupVisibilityListeners();
         cleanupVisibilityListeners = null;
+      }
+      if (unsubscribeScene) {
+        unsubscribeScene();
+        unsubscribeScene = null;
       }
 
       detachPlaybackInterception();
@@ -713,24 +730,34 @@
       }
       panel.element.remove();
       mountTarget = null;
+      panelMountHost = null;
     }
 
     function ensureMounted() {
-      const nextMountTarget = isPlaybackContextActive()
+      const nextShell = isPlaybackContextActive()
         ? (adapter.getMountTarget() || document.body)
         : null;
-      if (!nextMountTarget) {
+      if (!nextShell) {
         unmount();
         return;
       }
 
-      if (mountTarget === nextMountTarget && panel.element.parentElement === nextMountTarget) {
+      const nextPanelHost = resolvePanelMountHost(nextShell);
+      if (
+        mountTarget === nextShell
+        && panelMountHost === nextPanelHost
+        && panel.element.parentElement === nextPanelHost
+      ) {
         return;
       }
 
-      mountTarget = nextMountTarget;
-      domUtils.ensureRelativePosition(mountTarget);
-      mountTarget.appendChild(panel.element);
+      mountTarget = nextShell;
+      panelMountHost = nextPanelHost;
+      if (domUtils && typeof domUtils.ensureRelativePosition === 'function') {
+        domUtils.ensureRelativePosition(mountTarget);
+      }
+      panelMountHost.appendChild(panel.element);
+
       if (cleanupVisibilityListeners) {
         cleanupVisibilityListeners();
       }
@@ -739,6 +766,17 @@
         cleanupPlaybackControlListeners = null;
       }
       cleanupVisibilityListeners = installVisibilityListeners();
+
+      if (!unsubscribeScene && core.overlayScene && typeof core.overlayScene.subscribe === 'function') {
+        unsubscribeScene = core.overlayScene.subscribe(() => {
+          ensureMounted();
+          if (visibilityEnabled) {
+            publishLayoutExclusions(Boolean(
+              visibilityEnabled && (panelHovered || (controlsVisible && cursorVisible))
+            ));
+          }
+        });
+      }
     }
 
     function render() {

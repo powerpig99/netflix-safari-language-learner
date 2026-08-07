@@ -1,26 +1,32 @@
 # Overlay Layer Rewrite Plan
 
-Status: in progress (C1–C2 foundation, 2026-08-07)
+Status: largely complete for geometry ownership (2026-08-07)
 
-Landed so far:
+## Landed
 
 - Shared geometry in `utils/dom-utils.js` (`getRenderedVideoRect`, `toLocalRect`, `isVisibleElement`)
-- Pure layout engine in `core/overlay-layout-engine.js` (`computeSubtitlePlacement`, exclusion bands, exclusion store)
-- `core/overlay-controller.js` places subtitles via the engine (no inline lift math)
-- `ui/control-integration.js` publishes native control bands to `core.layoutExclusionStore` when controls are visible
-- Unit tests: `tests/unit/dom-utils.test.js`, `tests/unit/overlay-layout-engine.test.js`
+- Pure layout engine in `core/overlay-layout-engine.js`
+- **Single scene root** `.nll-scene` matches the rendered video rect (mount-local)
+  - subtitle block is a scene child
+  - panel host `.nll-scene__panel-host` is a scene child; control panel mounts there
+- Exclusion store: visibility publishes native control bands + panel rect; no interactive DOM scan
+- No 250ms layout poll; ResizeObserver + render + exclusion notifications
+- Debug surface extracted to `debug/runtime-debug.js` (content runtime is ~300 lines)
 
-Also done after C2:
+## Pretext / line-owned text layout — deferred (documented no-go for now)
 
-- Overlay no longer scans interactive Netflix nodes for collision lift
-- 250ms layout polling removed; layout updates from ResizeObserver, render, and exclusion-store notifications
-- Control integration publishes `native-controls` bands + `extension-panel` rect into the exclusion store
+**Reason not to finish pretext in this repo as it stands:**
 
-Still open for full rewrite:
+1. Project contract is **no build step**; `@chenglou/pretext` is an npm ESM package, not a drop-in IIFE for Safari content scripts.
+2. Accurate layout requires **named fonts** (`system-ui` is unsafe on macOS per pretext docs); that is a product CSS decision not yet made.
+3. Mapping `prepareWithSegments` output back to **clickable word tokens** (punctuation, CJK, bidi) is an open feasibility spike — shipping dual CSS + pretext layout would violate the single-owner rule.
 
-- Single overlay scene root owning panel + subtitles + status
-- pretext-owned line layout / clickable word tokens
-- Remove independent panel CSS geometry ownership (panel still top/right absolute in CSS)
+**When to resume:** after either (a) vendoring a single-file browser build of pretext and an explicit font stack, or (b) accepting a minimal bundler only for that module. Until then, subtitle **box** geometry is scene-owned; **line breaks** remain browser CSS (one text authority, intentional interim).
+
+## Remaining optional polish
+
+- Scene-local panel placement constants could move fully into the pure layout engine output map
+- Drop residual absolute CSS for panel when host-only positioning is proven on Safari
 
 This document describes a full rewrite of extension display/layout around one extension-owned overlay layer inside the rendered video rect.
 

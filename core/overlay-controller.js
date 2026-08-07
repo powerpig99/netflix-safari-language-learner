@@ -7,6 +7,8 @@
   const layoutEngine = core.overlayLayoutEngine;
   const layoutExclusionStore = core.layoutExclusionStore;
 
+  const PANEL_INSET_PX = 16;
+
   function traceTranslation(stage, detail) {
     if (globalThis.__NLL_TRACE_TRANSLATION__ === false) {
       return;
@@ -18,7 +20,9 @@
 
   function createOverlayController({ adapter, settingsStore, subtitleStore, translationQueue, wordController }) {
     let mountTarget = null;
-    let root = null;
+    let sceneRoot = null;
+    let subtitleRoot = null;
+    let panelHost = null;
     let originalLine = null;
     let translatedLine = null;
     let statusLine = null;
@@ -26,9 +30,25 @@
     let resizeObserver = null;
     let observedScaleTarget = null;
     let layoutFrame = null;
+    const sceneListeners = new Set();
+
+    function emitSceneChange() {
+      const host = getPanelHost();
+      sceneListeners.forEach((listener) => {
+        try {
+          listener({ host, sceneRoot, mountTarget });
+        } catch (_error) {
+          // Scene listeners must not break layout.
+        }
+      });
+    }
+
+    function getPanelHost() {
+      return panelHost || sceneRoot || null;
+    }
 
     function getLayoutRects() {
-      if (!root || !mountTarget || typeof mountTarget.getBoundingClientRect !== 'function') {
+      if (!sceneRoot || !mountTarget || typeof mountTarget.getBoundingClientRect !== 'function') {
         return null;
       }
 
@@ -57,66 +77,90 @@
       };
     }
 
-    function collectLayoutExclusions(contentRect) {
-      // Single exclusion path: published store from visibility/panel owners.
-      // Do not re-scan interactive Netflix DOM here — that reintroduces a second
-      // geometry authority and was the old bottom-lift heuristic.
+    function collectLayoutExclusions() {
       if (layoutExclusionStore && typeof layoutExclusionStore.getAll === 'function') {
-        const published = layoutExclusionStore.getAll();
-        if (published.length > 0) {
-          return published;
-        }
+        return layoutExclusionStore.getAll();
       }
-
-      // When controls are hidden, there are no published bands — use base inset only.
-      // contentRect is accepted for API stability; no implicit band inventing while hidden.
-      void contentRect;
       return [];
     }
 
     function updateLayoutMetrics() {
       const rects = getLayoutRects();
-      if (!rects) {
-        if (root) {
-          root.style.setProperty('--nll-video-scale', '1');
-        }
+      if (!rects || !sceneRoot || !subtitleRoot) {
         return;
       }
 
       const { mountRect, contentRect } = rects;
-      const overlayRect = root ? root.getBoundingClientRect() : null;
-      const estimatedOverlayHeight = overlayRect && overlayRect.height
-        ? overlayRect.height
-        : Math.max(root?.scrollHeight || 0, 72);
+      const contentLocal = domUtils && typeof domUtils.toLocalRect === 'function'
+        ? domUtils.toLocalRect(contentRect, mountRect)
+        : {
+          left: contentRect.left - mountRect.left,
+          top: contentRect.top - mountRect.top,
+          width: contentRect.width,
+          height: contentRect.height
+        };
+
+      // Scene owns the rendered video rect in mount-local coordinates.
+      sceneRoot.style.left = `${Math.round(contentLocal.left)}px`;
+      sceneRoot.style.top = `${Math.round(contentLocal.top)}px`;
+      sceneRoot.style.width = `${Math.round(contentLocal.width)}px`;
+      sceneRoot.style.height = `${Math.round(contentLocal.height)}px`;
+
+      const subtitleBox = subtitleRoot.querySelector('.nll-overlay__surface') || subtitleRoot;
+      const estimatedOverlayHeight = Math.max(
+        subtitleBox.getBoundingClientRect?.().height || 0,
+        subtitleRoot.scrollHeight || 0,
+        72
+      );
+
+      // Placement is computed against a synthetic mount that matches the scene
+      // (content rect), so bottom inset is scene-local.
+      const sceneAsMount = {
+        left: contentRect.left,
+        top: contentRect.top,
+        width: contentRect.width,
+        height: contentRect.height,
+        right: contentRect.right,
+        bottom: contentRect.bottom
+      };
 
       let placement = null;
       if (layoutEngine && typeof layoutEngine.computeSubtitlePlacement === 'function') {
         placement = layoutEngine.computeSubtitlePlacement({
-          mountRect,
+          mountRect: sceneAsMount,
           contentRect,
-          exclusions: collectLayoutExclusions(contentRect),
+          exclusions: collectLayoutExclusions(),
           estimatedOverlayHeight
         });
       }
 
       if (!placement) {
-        // Minimal fallback if the layout engine script failed to load.
         const scale = Math.min(2.1, Math.max(1, Math.min(contentRect.width / 1280, contentRect.height / 720)));
         const baseBottomInset = Math.max(10, Math.round(contentRect.height * 0.1));
-        const videoBottomInset = Math.max(0, mountRect.bottom - contentRect.bottom);
         placement = {
           scale,
-          left: (contentRect.left - mountRect.left) + (contentRect.width / 2),
+          left: contentRect.width / 2,
           width: Math.max(260, Math.round(Math.min(contentRect.width * 0.96, 1480 * scale))),
-          bottom: Math.round(videoBottomInset + baseBottomInset)
+          bottom: baseBottomInset
         };
       }
 
-      root.style.setProperty('--nll-video-scale', String(placement.scale.toFixed(3)));
-      root.style.left = `${placement.left}px`;
-      root.style.width = `${placement.width}px`;
-      root.style.bottom = `${placement.bottom}px`;
+      subtitleRoot.style.setProperty('--nll-video-scale', String(placement.scale.toFixed(3)));
+      subtitleRoot.style.left = `${placement.left}px`;
+      subtitleRoot.style.width = `${placement.width}px`;
+      subtitleRoot.style.bottom = `${placement.bottom}px`;
+      subtitleRoot.style.top = 'auto';
+      subtitleRoot.style.right = 'auto';
+      subtitleRoot.style.transform = 'translateX(-50%)';
+
+      if (panelHost) {
+        panelHost.style.top = `${PANEL_INSET_PX}px`;
+        panelHost.style.right = `${PANEL_INSET_PX}px`;
+        panelHost.style.left = 'auto';
+        panelHost.style.bottom = 'auto';
+      }
     }
+
     function requestLayoutUpdate() {
       if (layoutFrame !== null) {
         return;
@@ -182,26 +226,41 @@
         : null;
       if (!nextMountTarget) {
         mountTarget = null;
-        if (root) {
-          root.remove();
-          root = null;
+        if (sceneRoot) {
+          sceneRoot.remove();
+          sceneRoot = null;
+          subtitleRoot = null;
+          panelHost = null;
+          originalLine = null;
+          translatedLine = null;
+          statusLine = null;
+          emitSceneChange();
         }
         return null;
       }
 
-      if (root && mountTarget === nextMountTarget) {
-        return root;
+      if (sceneRoot && mountTarget === nextMountTarget) {
+        return sceneRoot;
       }
 
       mountTarget = nextMountTarget;
-      domUtils.ensureRelativePosition(mountTarget);
-
-      if (root) {
-        root.remove();
+      if (domUtils && typeof domUtils.ensureRelativePosition === 'function') {
+        domUtils.ensureRelativePosition(mountTarget);
       }
 
-      root = document.createElement('div');
-      root.className = 'nll-overlay';
+      if (sceneRoot) {
+        sceneRoot.remove();
+      }
+
+      sceneRoot = document.createElement('div');
+      sceneRoot.className = 'nll-scene';
+      sceneRoot.dataset.nllScene = '1';
+
+      panelHost = document.createElement('div');
+      panelHost.className = 'nll-scene__panel-host';
+
+      subtitleRoot = document.createElement('div');
+      subtitleRoot.className = 'nll-overlay';
 
       const surface = document.createElement('div');
       surface.className = 'nll-overlay__surface';
@@ -216,10 +275,26 @@
       statusLine.className = 'nll-overlay__status';
 
       surface.append(originalLine, translatedLine, statusLine);
-      root.appendChild(surface);
-      mountTarget.appendChild(root);
+      subtitleRoot.appendChild(surface);
+      sceneRoot.append(panelHost, subtitleRoot);
+      mountTarget.appendChild(sceneRoot);
+
+      core.overlayScene = {
+        getHost: getPanelHost,
+        getSceneRoot: () => sceneRoot,
+        getMountTarget: () => mountTarget,
+        requestLayout: requestLayoutUpdate,
+        subscribe(listener) {
+          sceneListeners.add(listener);
+          return () => {
+            sceneListeners.delete(listener);
+          };
+        }
+      };
+
       observeVideoScaleTarget();
-      return root;
+      emitSceneChange();
+      return sceneRoot;
     }
 
     function render() {
@@ -230,25 +305,31 @@
         return;
       }
 
-      root.dataset.fontSize = settings.subtitleFontSize;
+      subtitleRoot.dataset.fontSize = settings.subtitleFontSize;
       observeVideoScaleTarget();
       updateLayoutMetrics();
 
-      if (!settings.extensionEnabled) {
-        root.hidden = true;
+      const sceneEnabled = Boolean(settings.extensionEnabled);
+      sceneRoot.hidden = !sceneEnabled;
+      if (!sceneEnabled) {
         wordController.hideTooltip();
         return;
       }
 
-      if (!state.activeSubtitle.cue && !state.platformError) {
-        root.hidden = true;
+      const hasSubtitleContent = Boolean(state.activeSubtitle.cue || state.platformError);
+      subtitleRoot.hidden = !hasSubtitleContent;
+      if (!hasSubtitleContent) {
         wordController.hideTooltip();
+        requestLayoutUpdate();
         return;
       }
 
-      root.hidden = false;
+      if (domUtils && typeof domUtils.clearElement === 'function') {
+        domUtils.clearElement(originalLine);
+      } else {
+        originalLine.textContent = '';
+      }
 
-      domUtils.clearElement(originalLine);
       if (state.activeSubtitle.cue) {
         const context = buildContextWindow(state.activeSubtitle.cue, state.timeline);
         originalLine.appendChild(wordController.createInteractiveText(state.activeSubtitle.cue.text, {
@@ -331,14 +412,30 @@
     return {
       syncMount: ensureRoot,
       render,
+      getPanelHost,
+      getSceneRoot: () => sceneRoot,
+      subscribeScene: (listener) => {
+        sceneListeners.add(listener);
+        return () => {
+          sceneListeners.delete(listener);
+        };
+      },
       destroy() {
         unsubscribeSettings();
         unsubscribeStore();
         unsubscribeQueue();
         unsubscribeExclusions();
+        sceneListeners.clear();
         wordController.hideTooltip();
-        if (root) {
-          root.remove();
+        if (sceneRoot) {
+          sceneRoot.remove();
+        }
+        sceneRoot = null;
+        subtitleRoot = null;
+        panelHost = null;
+        mountTarget = null;
+        if (core.overlayScene) {
+          core.overlayScene = null;
         }
         if (resizeObserver) {
           resizeObserver.disconnect();

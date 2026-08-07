@@ -8,6 +8,32 @@
   --nll-text-shadow: 0 3px 18px rgba(0, 0, 0, 0.82);
 }
 
+/* One extension overlay scene covering the rendered video rect (mount-local). */
+.nll-scene {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2147482500;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.nll-scene__panel-host {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.nll-scene__panel-host > .nll-control-panel {
+  position: relative;
+  top: auto;
+  right: auto;
+}
+
 .nll-overlay {
   --nll-video-scale: 1;
   --nll-original-size: 1.94rem;
@@ -17,7 +43,7 @@
   bottom: 1rem;
   transform: translateX(-50%);
   width: min(96%, 1480px);
-  z-index: 2147482500;
+  z-index: 1;
   pointer-events: none;
 }
 

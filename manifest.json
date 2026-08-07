@@ -67,6 +67,7 @@
         "ui/control-panel.js",
         "ui/control-integration.js",
         "platform/netflix-adapter.js",
+        "debug/runtime-debug.js",
         "content-script.js"
       ]
     }
