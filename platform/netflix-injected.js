@@ -42,7 +42,11 @@
   const pendingSubtitleLoads = new Map();
   const requestHydrationDebug = {
     patchCount: 0,
-    lastPatchedRequest: null
+    inspectCount: 0,
+    candidateCount: 0,
+    lastPatchedRequest: null,
+    lastCandidate: null,
+    lastNearMiss: null
   };
   const debugState = {
     probe: null,
@@ -1157,6 +1161,74 @@
     return WATCH_PATH_PATTERN.test(globalThis.location.pathname);
   }
 
+  function looksLikeMediaProfileList(profiles) {
+    if (!Array.isArray(profiles) || profiles.length === 0) {
+      return false;
+    }
+
+    return profiles.some((profile) => {
+      const value = String(profile || '').toLowerCase();
+      return value.includes('webvtt')
+        || value.includes('dfxp')
+        || value.includes('imsc')
+        || value.includes('simpletts')
+        || value.includes('heaac')
+        || value.includes('avc')
+        || value.includes('hevc')
+        || value.includes('vp9')
+        || value.includes('playready')
+        || value.includes('widevine')
+        || value.includes('cbcs')
+        || value.includes('dash');
+    });
+  }
+
+  function findHydrationParams(node, depth = 0, seen = null) {
+    if (!node || typeof node !== 'object' || depth > 4) {
+      return null;
+    }
+
+    const visited = seen || new Set();
+    if (visited.has(node)) {
+      return null;
+    }
+    visited.add(node);
+
+    if (!Array.isArray(node) && node.params && typeof node.params === 'object' && !Array.isArray(node.params)) {
+      const profiles = node.params.profiles;
+      if (looksLikeMediaProfileList(profiles)
+        || Object.prototype.hasOwnProperty.call(node.params, 'supportsPartialHydration')
+        || Object.prototype.hasOwnProperty.call(node.params, 'showAllSubDubTracks')
+        || Object.prototype.hasOwnProperty.call(node.params, 'showAllTimedTextTracks')
+        || Array.isArray(node.languages)
+        || typeof node.params.viewableId !== 'undefined'
+        || typeof node.params.movieId !== 'undefined') {
+        return node;
+      }
+    }
+
+    if (Array.isArray(node)) {
+      const limit = Math.min(node.length, 12);
+      for (let index = 0; index < limit; index += 1) {
+        const found = findHydrationParams(node[index], depth + 1, visited);
+        if (found) {
+          return found;
+        }
+      }
+      return null;
+    }
+
+    const keys = Object.keys(node);
+    for (let index = 0; index < keys.length; index += 1) {
+      const found = findHydrationParams(node[keys[index]], depth + 1, visited);
+      if (found) {
+        return found;
+      }
+    }
+
+    return null;
+  }
+
   function maybeHydrateSubtitleRequest(jsonValue) {
     if (!isWatchPath()) {
       return null;
@@ -1166,6 +1238,21 @@
       return null;
     }
 
+    // Cheap prefilter: avoid parsing every stringify on the page.
+    const lower = jsonValue.toLowerCase();
+    if (!(
+      lower.includes('profiles')
+      || lower.includes('supportspartialhydration')
+      || lower.includes('showallsubdubtracks')
+      || lower.includes('showalltimedtexttracks')
+      || lower.includes('webvtt')
+      || lower.includes('timedtext')
+    )) {
+      return null;
+    }
+
+    requestHydrationDebug.inspectCount += 1;
+
     let cloned;
     try {
       cloned = originalJsonParse(jsonValue);
@@ -1173,50 +1260,106 @@
       return null;
     }
 
-    if (!cloned || typeof cloned !== 'object' || !cloned.params || typeof cloned.params !== 'object') {
+    if (!cloned || typeof cloned !== 'object') {
       return null;
     }
 
-    const hasHydrationFlag = Object.prototype.hasOwnProperty.call(cloned.params, 'supportsPartialHydration');
-    const hasSubtitleVisibilityFlag = Object.prototype.hasOwnProperty.call(cloned.params, 'showAllSubDubTracks');
-    const hasProfiles = Array.isArray(cloned.params.profiles) && cloned.params.profiles.length > 0;
-    const hasLanguages = Array.isArray(cloned.languages) && cloned.languages.length > 0;
+    const target = findHydrationParams(cloned);
+    if (!target || !target.params || typeof target.params !== 'object') {
+      requestHydrationDebug.lastNearMiss = {
+        reason: 'no-params-candidate',
+        inspectCount: requestHydrationDebug.inspectCount,
+        preview: jsonValue.slice(0, 180)
+      };
+      return null;
+    }
 
-    if (!hasProfiles || (!hasHydrationFlag && !hasSubtitleVisibilityFlag && !hasLanguages)) {
+    requestHydrationDebug.candidateCount += 1;
+    requestHydrationDebug.lastCandidate = {
+      keys: Object.keys(target.params).slice(0, 20),
+      profileCount: Array.isArray(target.params.profiles) ? target.params.profiles.length : 0,
+      hasLanguages: Array.isArray(target.languages),
+      hasSupportsPartialHydration: Object.prototype.hasOwnProperty.call(target.params, 'supportsPartialHydration'),
+      hasShowAllSubDubTracks: Object.prototype.hasOwnProperty.call(target.params, 'showAllSubDubTracks')
+    };
+
+    const profiles = Array.isArray(target.params.profiles) ? target.params.profiles.slice() : [];
+    const hasProfiles = profiles.length > 0;
+    if (!hasProfiles && !requestHydrationDebug.lastCandidate.hasSupportsPartialHydration
+      && !requestHydrationDebug.lastCandidate.hasShowAllSubDubTracks
+      && !requestHydrationDebug.lastCandidate.hasLanguages) {
+      requestHydrationDebug.lastNearMiss = {
+        reason: 'params-without-media-signals',
+        ...requestHydrationDebug.lastCandidate
+      };
       return null;
     }
 
     let modified = false;
 
-    if (cloned.params.supportsPartialHydration !== true) {
-      cloned.params.supportsPartialHydration = true;
+    if (target.params.supportsPartialHydration !== true) {
+      target.params.supportsPartialHydration = true;
       modified = true;
     }
 
-    if (cloned.params.showAllSubDubTracks !== true) {
-      cloned.params.showAllSubDubTracks = true;
+    if (target.params.showAllSubDubTracks !== true) {
+      target.params.showAllSubDubTracks = true;
       modified = true;
     }
 
-    if (hasProfiles && !cloned.params.profiles.includes(SUBTITLE_PROFILE)) {
-      cloned.params.profiles = cloned.params.profiles.concat(SUBTITLE_PROFILE);
+    // Some Netflix builds use this alternate visibility flag.
+    if (Object.prototype.hasOwnProperty.call(target.params, 'showAllTimedTextTracks')
+      && target.params.showAllTimedTextTracks !== true) {
+      target.params.showAllTimedTextTracks = true;
+      modified = true;
+    }
+
+    if (hasProfiles && !profiles.includes(SUBTITLE_PROFILE)) {
+      target.params.profiles = profiles.concat(SUBTITLE_PROFILE);
+      modified = true;
+    } else if (!hasProfiles) {
+      // Force a minimal profile list so Netflix returns downloadable WebVTT.
+      target.params.profiles = [SUBTITLE_PROFILE];
       modified = true;
     }
 
     if (!modified) {
+      // Already fully hydrated flags — still count as a hit so diagnostics are honest.
+      requestHydrationDebug.patchCount += 1;
+      requestHydrationDebug.lastPatchedRequest = {
+        patchCount: requestHydrationDebug.patchCount,
+        alreadyHydrated: true,
+        profileCount: Array.isArray(target.params.profiles) ? target.params.profiles.length : 0
+      };
       return null;
     }
 
     requestHydrationDebug.patchCount += 1;
     requestHydrationDebug.lastPatchedRequest = {
       patchCount: requestHydrationDebug.patchCount,
-      hadSupportsPartialHydration: hasHydrationFlag,
-      hadShowAllSubDubTracks: hasSubtitleVisibilityFlag,
-      hadProfiles: hasProfiles,
-      profileCount: Array.isArray(cloned.params.profiles) ? cloned.params.profiles.length : 0
+      alreadyHydrated: false,
+      profileCount: Array.isArray(target.params.profiles) ? target.params.profiles.length : 0,
+      forcedProfiles: !hasProfiles
     };
 
     return cloned;
+  }
+
+  function hydrateRequestBody(body) {
+    if (typeof body !== 'string' || !body) {
+      return null;
+    }
+
+    const hydrated = maybeHydrateSubtitleRequest(body);
+    if (!hydrated) {
+      return null;
+    }
+
+    try {
+      return originalJsonStringify(hydrated);
+    } catch (error) {
+      return null;
+    }
   }
 
   JSON.stringify = function patchedJsonStringify() {
@@ -1226,14 +1369,63 @@
     }
 
     const originalJsonValue = originalJsonStringify.apply(this, args);
-    const hydrated = maybeHydrateSubtitleRequest(originalJsonValue);
-    if (hydrated) {
-      args[0] = hydrated;
-      return originalJsonStringify.apply(this, args);
+    const hydratedBody = hydrateRequestBody(originalJsonValue);
+    if (hydratedBody) {
+      return hydratedBody;
     }
 
     return originalJsonValue;
   };
+
+  // Netflix may send manifest requests via fetch/XHR without going through a
+  // stringify of a plain object we can re-order (body already a string).
+  if (typeof globalThis.fetch === 'function') {
+    const originalFetch = globalThis.fetch.bind(globalThis);
+    globalThis.fetch = function patchedFetch(input, init) {
+      let nextInit = init;
+      if (init && typeof init.body === 'string') {
+        const hydratedBody = hydrateRequestBody(init.body);
+        if (hydratedBody && hydratedBody !== init.body) {
+          nextInit = Object.assign({}, init, { body: hydratedBody });
+        }
+      }
+
+      return originalFetch(input, nextInit).then((response) => {
+        // Best-effort capture for JSON responses even if caller uses .text().
+        try {
+          const contentType = response.headers && response.headers.get
+            ? (response.headers.get('content-type') || '')
+            : '';
+          if (contentType.includes('json') && typeof response.clone === 'function') {
+            response.clone().json().then((value) => {
+              try {
+                captureManifestCandidate(value);
+              } catch (_error) {
+                // ignore
+              }
+            }).catch(() => {});
+          }
+        } catch (_error) {
+          // ignore
+        }
+        return response;
+      });
+    };
+  }
+
+  if (typeof XMLHttpRequest !== 'undefined' && XMLHttpRequest.prototype) {
+    const originalSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function patchedXhrSend(body) {
+      let nextBody = body;
+      if (typeof body === 'string') {
+        const hydratedBody = hydrateRequestBody(body);
+        if (hydratedBody) {
+          nextBody = hydratedBody;
+        }
+      }
+      return originalSend.call(this, nextBody);
+    };
+  }
 
   function countHydratedTimedTextTracks(manifest) {
     return (Array.isArray(manifest?.timedtexttracks) ? manifest.timedtexttracks : [])
@@ -1674,9 +1866,12 @@
     if (!manifestSummary) {
       const trackCount = probe.timedTextTrackList?.count || 0;
       const hydrationPatches = requestHydration?.patchCount || 0;
+      const hydrationInspects = requestHydration?.inspectCount || 0;
+      const hydrationCandidates = requestHydration?.candidateCount || 0;
+      const nearMiss = requestHydration?.lastNearMiss?.reason || 'none';
       return {
         stage: 'waiting-for-manifest-capture',
-        message: `LR-style Netflix player methods are present, but no timed-text manifest has been captured yet. Player timed-text tracks: ${trackCount}. Request hydration patches: ${hydrationPatches}. Toggle subtitles off/on or reload the watch page if this persists.`
+        message: `LR-style Netflix player methods are present, but no timed-text manifest has been captured yet. Player timed-text tracks: ${trackCount} (downloadables not present on live track objects). Hydration patches: ${hydrationPatches}, candidates: ${hydrationCandidates}, inspects: ${hydrationInspects}, near-miss: ${nearMiss}. Reload the watch page so a fresh manifest request can be patched.`
       };
     }
 
