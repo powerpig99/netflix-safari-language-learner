@@ -8,6 +8,16 @@
   --nll-text-shadow: 0 3px 18px rgba(0, 0, 0, 0.82);
 }
 
+/* Keep Netflix timedtext rendering alive (for DOM sampling) but hide it when
+   the extension owns the visible dual-sub overlay. */
+.watch-video.nll-hide-native-timedtext .player-timedtext,
+.watch-video.nll-hide-native-timedtext .player-timedtext-text-container,
+.watch-video.nll-hide-native-timedtext [data-uia="player-timedtext"],
+.watch-video.nll-hide-native-timedtext [data-uia="player-timedtext-text-container"] {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 /* One extension overlay scene covering the rendered video rect (mount-local). */
 .nll-scene {
   position: absolute;

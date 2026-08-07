@@ -372,6 +372,7 @@
         });
       }
 
+      const hasOriginalCue = Boolean(state.activeSubtitle.cue && state.activeSubtitle.cue.text);
       translatedLine.hidden = !shouldShowTranslation;
       translatedLine.textContent = '';
 
@@ -380,9 +381,14 @@
           translatedLine.textContent = netflixTargetCue.text;
           translatedLine.dataset.state = 'netflix';
         } else if (shouldUseNetflixTargetSubtitles) {
+          // Reserve layout slot so the original line does not jump.
           translatedLine.hidden = false;
           translatedLine.textContent = '\u00a0';
           translatedLine.dataset.state = 'netflix-unavailable';
+        } else if (!hasOriginalCue) {
+          // Never show a perpetual "Translating..." with no original line.
+          translatedLine.hidden = true;
+          translatedLine.dataset.state = 'idle';
         } else if (!translationEntry || translationEntry.status === 'pending') {
           translatedLine.textContent = 'Translating...';
           translatedLine.dataset.state = 'loading';

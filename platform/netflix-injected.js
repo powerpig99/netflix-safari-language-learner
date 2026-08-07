@@ -1649,7 +1649,15 @@
           continue;
         }
 
-        // Prefer showing/hidden tracks that already carry cues.
+        // Force cue loading in browsers that only populate cues when mode is not disabled.
+        if (track.mode === 'disabled') {
+          try {
+            track.mode = 'hidden';
+          } catch (_error) {
+            // ignore
+          }
+        }
+
         const cueList = track.cues;
         if (!cueList || !cueList.length) {
           continue;
@@ -1687,6 +1695,210 @@
     }
 
     return null;
+  }
+
+  // Netflix often renders captions into DOM without exposing downloadable
+  // timed-text files on Safari. When CDN hydration fails, this is the single
+  // authoritative live source: rendered timedtext text + DOM video clock.
+  const RENDERED_SUBTITLE_SELECTORS = [
+    '.player-timedtext',
+    '.player-timedtext-text-container',
+    '[data-uia="player-timedtext"]',
+    '[data-uia="player-timedtext-text-container"]',
+    '.watch-video--player-view .player-timedtext'
+  ].join(', ');
+
+  const renderedSubtitleTracker = {
+    timeline: [],
+    activeText: '',
+    activeStartTime: null,
+    lastEmittedKey: '',
+    observer: null,
+    attachedRoot: null,
+    refreshTimer: null
+  };
+
+  function normalizeRenderedSubtitleText(value) {
+    return String(value || '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/\s*\n\s*/g, '\n')
+      .replace(/[ \t]+/g, ' ')
+      .trim();
+  }
+
+  function readRenderedSubtitleText() {
+    const nodes = Array.from(document.querySelectorAll(RENDERED_SUBTITLE_SELECTORS));
+    if (!nodes.length) {
+      return '';
+    }
+
+    // Prefer deepest non-empty text containers (actual cue lines).
+    const texts = [];
+    nodes.forEach((node) => {
+      if (!(node instanceof Element)) {
+        return;
+      }
+      // Skip empty shells; keep visible line containers.
+      const text = normalizeRenderedSubtitleText(node.innerText || node.textContent || '');
+      if (!text) {
+        return;
+      }
+      // Avoid double-counting parent+child with the same text.
+      if (texts[texts.length - 1] === text) {
+        return;
+      }
+      texts.push(text);
+    });
+
+    if (!texts.length) {
+      return '';
+    }
+
+    // Longest unique text is usually the full multi-line cue.
+    texts.sort((left, right) => right.length - left.length);
+    return texts[0];
+  }
+
+  function getPlaybackClockSeconds(probe) {
+    const fromProbe = Number(probe?.currentTime);
+    if (Number.isFinite(fromProbe)) {
+      return fromProbe;
+    }
+
+    const video = document.querySelector('video');
+    const fromVideo = Number(video?.currentTime);
+    return Number.isFinite(fromVideo) ? fromVideo : null;
+  }
+
+  function appendRenderedCue(cue) {
+    if (!cue || !cue.text || !Number.isFinite(cue.startTime)) {
+      return;
+    }
+
+    const endTime = Number.isFinite(cue.endTime)
+      ? Math.max(cue.endTime, cue.startTime + 0.05)
+      : cue.startTime + 0.05;
+
+    const nextCue = {
+      startTime: cue.startTime,
+      endTime,
+      text: cue.text
+    };
+
+    const timeline = renderedSubtitleTracker.timeline;
+    const last = timeline[timeline.length - 1];
+    if (last && last.text === nextCue.text && Math.abs(last.startTime - nextCue.startTime) < 0.15) {
+      last.endTime = Math.max(last.endTime, nextCue.endTime);
+      return;
+    }
+
+    // Keep a bounded rolling history so prev/repeat remain useful.
+    timeline.push(nextCue);
+    if (timeline.length > 400) {
+      renderedSubtitleTracker.timeline = timeline.slice(timeline.length - 400);
+    }
+  }
+
+  function syncRenderedSubtitleTracker(probe, sourceLanguage) {
+    const currentTime = getPlaybackClockSeconds(probe);
+    if (!Number.isFinite(currentTime)) {
+      return null;
+    }
+
+    ensureRenderedSubtitleObserver();
+
+    const text = readRenderedSubtitleText();
+    const activeText = renderedSubtitleTracker.activeText;
+    const activeStartTime = renderedSubtitleTracker.activeStartTime;
+
+    if (text && text === activeText) {
+      // Still on the same rendered line; expose an open-ended active cue.
+      const openCue = {
+        startTime: Number.isFinite(activeStartTime) ? activeStartTime : currentTime,
+        endTime: currentTime + 1.5,
+        text
+      };
+      const timeline = renderedSubtitleTracker.timeline.slice();
+      // Do not persist the open-ended end until the line changes/clears.
+      return {
+        timeline,
+        activeCue: openCue,
+        sourceLanguage: sourceLanguage || 'en',
+        timelineKey: `rendered-dom:${timeline.length}:${text.slice(0, 24)}`,
+        source: 'rendered-dom'
+      };
+    }
+
+    if (activeText && Number.isFinite(activeStartTime)) {
+      appendRenderedCue({
+        startTime: activeStartTime,
+        endTime: Math.max(currentTime, activeStartTime + 0.05),
+        text: activeText
+      });
+    }
+
+    if (text) {
+      renderedSubtitleTracker.activeText = text;
+      renderedSubtitleTracker.activeStartTime = currentTime;
+    } else {
+      renderedSubtitleTracker.activeText = '';
+      renderedSubtitleTracker.activeStartTime = null;
+    }
+
+    const timeline = renderedSubtitleTracker.timeline.slice();
+    let activeCue = null;
+    if (text) {
+      activeCue = {
+        startTime: currentTime,
+        endTime: currentTime + 1.5,
+        text
+      };
+    } else if (timeline.length) {
+      activeCue = findCueAtTime(timeline, currentTime);
+    }
+
+    return {
+      timeline,
+      activeCue,
+      sourceLanguage: sourceLanguage || 'en',
+      timelineKey: `rendered-dom:${timeline.length}:${text ? text.slice(0, 24) : 'clear'}`,
+      source: 'rendered-dom'
+    };
+  }
+
+  function ensureRenderedSubtitleObserver() {
+    if (typeof MutationObserver !== 'function') {
+      return;
+    }
+
+    const root = document.querySelector('.watch-video') || document.body;
+    if (!root) {
+      return;
+    }
+
+    if (renderedSubtitleTracker.observer && renderedSubtitleTracker.attachedRoot === root) {
+      return;
+    }
+
+    if (renderedSubtitleTracker.observer) {
+      renderedSubtitleTracker.observer.disconnect();
+    }
+
+    renderedSubtitleTracker.attachedRoot = root;
+    renderedSubtitleTracker.observer = new MutationObserver(() => {
+      if (renderedSubtitleTracker.refreshTimer !== null) {
+        return;
+      }
+      renderedSubtitleTracker.refreshTimer = globalThis.setTimeout(() => {
+        renderedSubtitleTracker.refreshTimer = null;
+        scheduleRefresh('rendered-subtitle-dom');
+      }, 80);
+    });
+    renderedSubtitleTracker.observer.observe(root, {
+      subtree: true,
+      childList: true,
+      characterData: true
+    });
   }
 
   function countHydratedTimedTextTracks(manifest) {
@@ -2193,6 +2405,15 @@
       };
     }
 
+    if (ready.state === 'deterministic-subtitles-ready' && ready.source && ready.source !== 'cdn') {
+      return {
+        stage: 'deterministic-subtitles-ready',
+        message: null,
+        source: ready.source,
+        cueCount: ready.cueCount
+      };
+    }
+
     if (ready.state === 'waiting-for-downloadable') {
       const lastPatch = requestHydration?.lastPatchedRequest || null;
       const patchCount = Number(requestHydration?.patchCount || 0);
@@ -2204,7 +2425,7 @@
         : '';
       return {
         stage: 'manifest-captured-no-download-url',
-        message: `Safari captured the subtitle manifest, but the active track is not hydrated with a downloadable subtitle URL yet. Manifest tracks: ${manifestSummary.timedTextTrackCount}, usable tracks: ${manifestSummary.hydratedTimedTextTrackCount}, active language: ${selection.activeTimedTextTrack.language || selection.matchedTimedTextTrack?.language || 'unknown'}, chosen profile: ${selection.downloadable?.profile || 'none'}.${patchSummary}${profileSummary}`
+        message: `Safari captured the subtitle manifest, but the active track is not hydrated with a downloadable subtitle URL yet. Manifest tracks: ${manifestSummary.timedTextTrackCount}, usable tracks: ${manifestSummary.hydratedTimedTextTrackCount}, active language: ${selection.activeTimedTextTrack.language || selection.matchedTimedTextTrack?.language || 'unknown'}, chosen profile: ${selection.downloadable?.profile || 'none'}.${patchSummary}${profileSummary} Waiting for rendered Netflix subtitles as live source.`
       };
     }
 
@@ -2397,8 +2618,9 @@
       selection.activeTimelineSelection = null;
     }
 
-    // Last-resort timing source: native HTML textTracks if Netflix already
-    // loaded cues into the media element (common while native subs are shown).
+    // Fallback timeline sources when CDN timed-text files are not hydrated on Safari.
+    // Prefer HTMLTrackElement cues; otherwise use Netflix's rendered timedtext DOM
+    // + the live video clock (one live path, not mixed with CDN cues).
     if (ready.state !== 'deterministic-subtitles-ready') {
       const domTimeline = tryTimelineFromDomTextTracks();
       if (domTimeline && domTimeline.timeline.length > 0) {
@@ -2416,6 +2638,23 @@
           source: 'dom-texttracks'
         };
         selection.timelineSource = 'dom-texttracks';
+      } else {
+        const rendered = syncRenderedSubtitleTracker(probe, sourceLanguage);
+        if (rendered && (rendered.activeCue || rendered.timeline.length > 0)) {
+          timeline = rendered.timeline;
+          timelineKey = rendered.timelineKey;
+          sourceLanguage = rendered.sourceLanguage || sourceLanguage;
+          captionsEnabled = Boolean(rendered.activeCue || rendered.timeline.length);
+          activeCue = rendered.activeCue;
+          ready = {
+            state: 'deterministic-subtitles-ready',
+            cueCount: timeline.length + (rendered.activeCue ? 1 : 0),
+            timelineKey,
+            currentTime: getPlaybackClockSeconds(probe),
+            source: 'rendered-dom'
+          };
+          selection.timelineSource = 'rendered-dom';
+        }
       }
     }
 
@@ -3080,17 +3319,25 @@
 
     if (command === 'set-native-subtitle-visibility') {
       const visible = Boolean(payload?.visible);
+      const shell = document.querySelector('.watch-video') || document.documentElement;
+
+      // Visually hide native timedtext via CSS while keeping Netflix's timedtext
+      // pipeline enabled. That preserves rendered DOM cue updates for the
+      // Safari fallback timeline when CDN downloadables are unhydrated.
+      if (shell) {
+        shell.classList.toggle('nll-hide-native-timedtext', !visible);
+      }
 
       if (typeof context.sessionPlayer?.setTimedTextVisibility === 'function') {
-        safeCall(() => context.sessionPlayer.setTimedTextVisibility(visible));
+        safeCall(() => context.sessionPlayer.setTimedTextVisibility(true));
       }
 
       if (typeof context.sessionPlayer?.setTimedTextVisible === 'function') {
-        safeCall(() => context.sessionPlayer.setTimedTextVisible(visible));
+        safeCall(() => context.sessionPlayer.setTimedTextVisible(true));
       }
 
       if (context.activeSessionId && typeof context.videoPlayer?.showTimedTextBySessionId === 'function') {
-        safeCall(() => context.videoPlayer.showTimedTextBySessionId(context.activeSessionId, visible));
+        safeCall(() => context.videoPlayer.showTimedTextBySessionId(context.activeSessionId, true));
       }
 
       scheduleRefresh('player-timedtext-visibility');
